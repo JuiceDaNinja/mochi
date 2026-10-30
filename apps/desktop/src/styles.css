@@ -1,0 +1,176 @@
+/* Mochi character window. The window itself is transparent and click-through;
+   only Mochi's body and the confirm buttons receive input. */
+
+:root {
+  --mochi-scale: 0.8;
+  --bubble-bg: #fffdf9;
+  --bubble-ink: #3b312c;
+  --blush: #f7a8b4;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: transparent;
+  font-family: "Nunito", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  user-select: none; -webkit-user-select: none;
+}
+body.dev { background: linear-gradient(180deg, #e9eef5 0%, #d7dfe9 100%); }
+
+/* ---------- Mochi root: positioned by motion.ts via transform ---------- */
+.mochi {
+  position: absolute; left: 0; top: 0;
+  width: calc(120px * var(--mochi-scale));
+  will-change: transform;
+  pointer-events: none;
+  /* Fixed height with the body at the bottom, so showing the bubble never moves the body. */
+  height: calc(112px * var(--mochi-scale) + 128px);
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+}
+.body-wrap { pointer-events: auto; cursor: default; }
+.mochi-svg { width: calc(120px * var(--mochi-scale)); height: calc(112px * var(--mochi-scale)); display: block; overflow: visible; }
+
+.body-group { transform-origin: 60px 100px; transform-box: view-box; }
+.pupil { transition: transform 90ms linear; }
+.blush ellipse { fill: var(--blush); opacity: 0.55; transition: opacity 300ms; }
+.arm, .thumb { opacity: 0; transform-origin: 60px 66px; transform-box: view-box; }
+.arm-l { transform-origin: 14px 68px; }
+.arm-r { transform-origin: 106px 68px; }
+.thumb { transform-origin: 0px 10px; }
+.mouth path, .mouth circle, .eye .lid, .eye .wet, .eye .happy, .eye .tear { transition: opacity 200ms; }
+
+/* ---------- Idle: breathing + occasional squash ---------- */
+.state-idle .body-group { animation: breathe 3.2s ease-in-out infinite; }
+@keyframes breathe { 0%,100% { transform: scale(1, 1); } 50% { transform: scale(1.015, 0.975); } }
+
+/* ---------- Listening: lean up, eyes wide ---------- */
+.state-listening .body-group { animation: lean-up 500ms ease-out forwards; }
+.state-listening .pupil ellipse { ry: 9.2; rx: 6.8; }
+@keyframes lean-up { to { transform: scale(0.98, 1.05); } }
+
+/* ---------- Working: small smile, focused ---------- */
+.state-working .m-idle { opacity: 0; }
+.state-working .m-smile { opacity: 1; }
+.state-working .body-group { animation: bob 1.4s ease-in-out infinite; }
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+
+/* ---------- Success: crescent eyes, big smile, bright blush ---------- */
+.state-success .pupil { opacity: 0; }
+.state-success .eye .happy { opacity: 1; }
+.state-success .m-idle, .state-success .m-smile { opacity: 0; }
+.state-success .m-big { opacity: 1; }
+.state-success .blush ellipse { opacity: 0.95; }
+
+/* ---------- Lost: wet eyes, raised lower lids, wobble mouth, shrink 10% ---------- */
+.state-lost .body-group { transform: scale(0.9); transform-origin: 60px 100px; transition: transform 600ms ease; }
+.state-lost .eye .wet { opacity: 0.75; }
+.state-lost .eye .lid { opacity: 1; }
+.state-lost .eye .tear { opacity: 1; animation: tear 1.6s ease-in infinite; }
+.state-lost .m-idle, .state-lost .m-smile { opacity: 0; }
+.state-lost .m-wobble { opacity: 1; animation: lip 420ms ease-in-out infinite; }
+.state-lost .blush ellipse { opacity: 0.35; }
+@keyframes tear { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(10px); opacity: 0; } }
+@keyframes lip { 0%,100% { transform: translateY(0); } 50% { transform: translateY(0.8px); } }
+
+/* ---------- Confirm: small mouth, bright blush, leaning back, eyes up ---------- */
+.state-confirm .body-group { transform: scale(1, 0.98) translateY(1px); }
+.state-confirm .m-idle, .state-confirm .m-smile { opacity: 0; }
+.state-confirm .m-o { opacity: 1; }
+.state-confirm .blush ellipse { opacity: 0.9; }
+
+/* ---------- Learning: sparkle + bright eyes ---------- */
+.state-learning .sparkle { opacity: 1; animation: sparkle 900ms ease-out forwards; transform-origin: 96px 26px; transform-box: view-box; }
+.state-learning .m-smile { opacity: 1; }
+.state-learning .m-idle { opacity: 0; }
+.sparkle { transform: translate(96px, 26px); }
+@keyframes sparkle { 0% { transform: translate(96px, 26px) scale(0.2) rotate(0deg); } 50% { transform: translate(96px, 22px) scale(1.2) rotate(90deg); } 100% { transform: translate(96px, 16px) scale(0) rotate(180deg); } }
+
+/* ---------- Gestures (classes added briefly by view.ts) ---------- */
+.g-hop .body-wrap { animation: hop 520ms cubic-bezier(.3,1.4,.5,1); }
+@keyframes hop { 0% { transform: translateY(0) scale(1,1); } 20% { transform: translateY(2px) scale(1.06,0.92); } 55% { transform: translateY(-14px) scale(0.96,1.06); } 100% { transform: translateY(0) scale(1,1); } }
+
+.g-wobble .body-group { animation: wobble 700ms ease-in-out; }
+@keyframes wobble { 0%,100% { transform: scale(0.9) translateX(0) rotate(0); } 20% { transform: scale(0.9) translateX(-4px) rotate(-3deg); } 40% { transform: scale(0.9) translateX(4px) rotate(3deg); } 60% { transform: scale(0.9) translateX(-3px) rotate(-2deg); } 80% { transform: scale(0.9) translateX(2px) rotate(1.5deg); } }
+
+.g-nod .body-group { animation: nod 520ms ease-in-out; }
+@keyframes nod { 0%,100% { transform: translateY(0); } 25% { transform: translateY(4px) scaleY(0.96); } 50% { transform: translateY(0); } 75% { transform: translateY(4px) scaleY(0.96); } }
+
+.g-look_up .pupil { transform: translate(0, -3px) !important; }
+
+.g-click .arm-r { opacity: 1; animation: tap 320ms ease-in-out; }
+@keyframes tap { 0% { transform: rotate(0); } 50% { transform: rotate(28deg) translateY(4px); } 100% { transform: rotate(0); } }
+
+.g-type .arm-l, .g-type .arm-r { opacity: 1; }
+.g-type .arm-l { animation: type-l 160ms ease-in-out infinite; }
+.g-type .arm-r { animation: type-r 160ms ease-in-out infinite 80ms; }
+.g-type .body-group { animation: bob 320ms ease-in-out infinite; }
+@keyframes type-l { 0%,100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+@keyframes type-r { 0%,100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+
+.g-thumbs_up .thumb { opacity: 1; animation: thumb 900ms ease-out; }
+@keyframes thumb { 0% { transform: translateY(10px) scale(0.6); opacity: 0; } 25% { transform: translateY(-2px) scale(1.1); opacity: 1; } 80% { transform: translateY(0) scale(1); opacity: 1; } 100% { opacity: 0; } }
+
+.g-heart .arm-l, .g-heart .arm-r { opacity: 1; }
+.g-heart .arm-l { animation: arm-up-l 400ms ease-out forwards; }
+.g-heart .arm-r { animation: arm-up-r 400ms ease-out forwards; }
+.g-heart .heart { opacity: 1; animation: heart 1300ms ease-out forwards; transform-origin: 60px 0; transform-box: view-box; }
+@keyframes arm-up-l { to { transform: translate(14px, -26px) rotate(40deg); } }
+@keyframes arm-up-r { to { transform: translate(-14px, -26px) rotate(-40deg); } }
+@keyframes heart { 0% { transform: translate(78px, 12px) scale(0.3) rotate(0); opacity: 0; } 25% { transform: translate(88px, -2px) scale(1.3) rotate(10deg); opacity: 1; } 60% { transform: translate(96px, -12px) scale(1.05) rotate(16deg); opacity: 1; } 100% { transform: translate(104px, -30px) scale(0.9) rotate(22deg); opacity: 0; } }
+
+/* ---------- Speech / thinking bubble ---------- */
+.bubble {
+  pointer-events: none;
+  position: relative; margin-bottom: 8px;
+  max-width: 260px; padding: 8px 12px;
+  background: var(--bubble-bg); color: var(--bubble-ink);
+  border-radius: 14px; border: 1px solid #e8dccf;
+  box-shadow: 0 4px 14px rgba(40, 30, 20, 0.12);
+  font-size: 14px; line-height: 1.3; text-align: center; white-space: pre-wrap;
+  animation: bubble-in 220ms cubic-bezier(.3,1.3,.5,1);
+}
+.bubble::after {
+  content: ""; position: absolute; left: 50%; bottom: -7px; width: 12px; height: 12px;
+  background: var(--bubble-bg); border-right: 1px solid #e8dccf; border-bottom: 1px solid #e8dccf;
+  transform: translateX(-50%) rotate(45deg);
+}
+.bubble .dots { display: none; margin-left: 2px; }
+.bubble[data-variant="thinking"] { font-style: italic; color: #7a6b61; border-radius: 18px; }
+.bubble[data-variant="thinking"] .dots { display: inline-block; }
+.bubble[data-variant="thinking"]::after { display: none; }
+.dots i { display: inline-block; width: 4px; height: 4px; margin: 0 1px 1px; border-radius: 50%; background: #9a8a7f; animation: dot 1.2s infinite; }
+.dots i:nth-child(2) { animation-delay: 0.2s; } .dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dot { 0%,80%,100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@keyframes bubble-in { from { transform: translateY(6px) scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- Confirm fallback buttons ---------- */
+.confirm { pointer-events: auto; display: flex; gap: 8px; margin-bottom: 8px; }
+.confirm button {
+  border: 0; border-radius: 999px; padding: 6px 16px; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.confirm .yes { background: #ffb3bf; color: #5a1f2b; }
+.confirm .no { background: #fffdf9; color: #5a4a40; border: 1px solid #e8dccf; }
+.confirm button:hover { filter: brightness(0.97); transform: translateY(-1px); }
+
+/* ---------- In-character menu (click Mochi while idle) ---------- */
+.menu {
+  pointer-events: auto; position: absolute; bottom: calc(112px * var(--mochi-scale) + 8px);
+  display: flex; flex-direction: column; gap: 4px; min-width: 190px; padding: 8px;
+  background: var(--bubble-bg); border: 1px solid #e8dccf; border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(40, 30, 20, 0.14); font-size: 13px; color: var(--bubble-ink);
+  animation: bubble-in 180ms cubic-bezier(.3,1.3,.5,1);
+}
+.menu button, .menu label { font: inherit; text-align: left; padding: 6px 10px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.menu button:hover, .menu label:hover { background: #f6ebe1; }
+.menu button[data-x] { color: #a04050; }
+
+/* ---------- Dev panel (browser only) ---------- */
+.dev-panel {
+  position: fixed; top: 12px; left: 12px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 520px;
+  background: rgba(255,255,255,0.85); padding: 8px; border-radius: 10px; font-size: 12px; backdrop-filter: blur(6px);
+}
+.dev-panel button, .dev-panel label { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+.dev-panel .hint { width: 100%; color: #666; }
+.fake-target { position: fixed; border: 2px dashed rgba(255,95,122,0.6); border-radius: 6px; pointer-events: none; display: none; }

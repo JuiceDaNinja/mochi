@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capabilities",
+  "identifier": "default",
+  "description": "The character window: events in both directions and window queries.",
+  "windows": ["mochi"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:default",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-cursor-position",
+    "core:window:allow-current-monitor",
+    "core:window:allow-primary-monitor",
+    "core:window:allow-outer-position",
+    "core:window:allow-scale-factor"
+  ]
+}

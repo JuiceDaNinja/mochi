@@ -1,0 +1,16 @@
+[package]
+name = "mochi-brain-mock"
+description = "Phase 1: a scripted brain and a fake screen so the character can be built before any model is wired in."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mochi-core = { path = "../mochi-core" }
+async-trait.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
