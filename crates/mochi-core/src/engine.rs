@@ -70,6 +70,8 @@ pub struct EngineConfig {
     pub lost_timeout: Duration,
     pub max_cycles: usize,
     pub screenshot_when_tree_smaller_than: usize,
+    /// Diagnostics sink (the app writes it to its log file).
+    pub log: Option<Arc<dyn Fn(&str) + Send + Sync>>,
 }
 
 impl Default for EngineConfig {
@@ -79,6 +81,7 @@ impl Default for EngineConfig {
             lost_timeout: Duration::from_secs(120),
             max_cycles: 40,
             screenshot_when_tree_smaller_than: 5,
+            log: None,
         }
     }
 }
@@ -137,7 +140,14 @@ impl TaskEngine {
         outcome
     }
 
+    fn log(&self, msg: &str) {
+        if let Some(l) = &self.config.log {
+            l(msg);
+        }
+    }
+
     async fn run_inner(&mut self, task: &str) -> TaskOutcome {
+        self.log(&format!("task start: {task:?} brain={}", self.brain.name()));
         self.emit(CharacterEvent::Say { text: pick(lines::START) }).await;
         let mut history: Vec<Step> = vec![];
         let mut said_remembered = false;
@@ -150,8 +160,13 @@ impl TaskEngine {
             // 1. Snapshot (tree first, screenshot only when thin and the brain can see).
             let mut screen = match self.perception.snapshot(false).await {
                 Ok(s) => s,
-                Err(e) => return TaskOutcome::Failed { error: e.to_string() },
+                Err(e) => {
+                    self.log(&format!("cycle {_cycle}: snapshot failed: {e}"));
+                    self.emit(CharacterEvent::Say { text: "I can't see a window to work in…".into() }).await;
+                    return TaskOutcome::Failed { error: e.to_string() };
+                }
             };
+            self.log(&format!("cycle {_cycle}: window app={} title={:?} elements={} screenshot={}", screen.window.app_id, screen.window.title, screen.elements.len(), screen.screenshot_png_b64.is_some()));
             if self.brain.capabilities().vision && screen.elements.len() < self.config.screenshot_when_tree_smaller_than {
                 if let Ok(s) = self.perception.snapshot(true).await {
                     screen = s;
@@ -205,12 +220,17 @@ impl TaskEngine {
                 Some(t) => t,
                 None => match call.await {
                     Ok(Err(e)) => {
+                        self.log(&format!("cycle {_cycle}: brain error: {e}"));
                         self.emit(CharacterEvent::Say { text: pick(lines::SLEEPY) }).await;
                         return TaskOutcome::Failed { error: e.to_string() };
                     }
-                    _ => return TaskOutcome::Failed { error: "brain ended its turn without an action".into() },
+                    _ => {
+                        self.log(&format!("cycle {_cycle}: brain ended its turn without an action"));
+                        return TaskOutcome::Failed { error: "brain ended its turn without an action".into() };
+                    }
                 },
             };
+            self.log(&format!("cycle {_cycle}: brain -> {terminal:?}"));
 
             // 5. Handle the terminal event.
             match terminal {
@@ -272,7 +292,9 @@ impl TaskEngine {
                     let target = target_bounds(&action, &screen);
                     self.emit(CharacterEvent::MoveTo { bounds: target, monitor_id: screen.window.monitor_id }).await;
 
-                    match self.gate.classify(&action, &screen, irreversible) {
+                    let verdict = self.gate.classify(&action, &screen, irreversible);
+                    self.log(&format!("cycle {_cycle}: gate -> {verdict:?}"));
+                    match verdict {
                         GateVerdict::Blocked { reason } => {
                             let _ = self.memory.log_gate(&screen.window.app_id, &label_of(&action, &screen), "blocked", "blocked");
                             self.emit(CharacterEvent::Say { text: reason.clone() }).await;
@@ -316,6 +338,9 @@ impl TaskEngine {
                         Ok(()) => (true, String::new()),
                         Err(e) => (false, e.to_string()),
                     };
+                    if !ok {
+                        self.log(&format!("cycle {_cycle}: action failed: {note}"));
+                    }
                     history.push(Step { action, ok, note });
                 }
                 StepEvent::Narrate { .. } => unreachable!("narration is not terminal"),

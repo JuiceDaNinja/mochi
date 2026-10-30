@@ -155,7 +155,10 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
                 }
             }
             DesktopMessage.PairDenied -> { pairing = null; _ui.update { it.copy(phase = LinkUi.Phase.Disconnected, pairCode = null, error = "Pairing was not approved on both devices.") }; wantConnected = false }
-            DesktopMessage.AuthOk -> _ui.update { it.copy(phase = LinkUi.Phase.Connected, mochi = MochiState.IDLE, error = null) }
+            DesktopMessage.AuthOk -> {
+                d?.let { store.updateAddress(it.host, it.port) }
+                _ui.update { it.copy(phase = LinkUi.Phase.Connected, mochi = MochiState.IDLE, error = null) }
+            }
             DesktopMessage.AuthFailed -> { store.clear(); _ui.update { it.copy(phase = LinkUi.Phase.Disconnected, error = "This computer no longer knows this phone. Pair again.") }; wantConnected = false }
             is DesktopMessage.State -> _ui.update { it.copy(mochi = m.state, caption = m.line ?: it.caption, confirmText = if (m.state == MochiState.CONFIRM) it.confirmText else null) }
             is DesktopMessage.Narrate -> _ui.update { it.copy(caption = m.text) }
@@ -167,14 +170,18 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
         }
     }
 
-    /** 1 s, 2 s, 5 s, then every 10 s until the desktop is back. */
+    /** 1 s, 2 s, 5 s, then every 10 s until the desktop is back. Every other attempt
+     *  tries Mochi's default port on the same host, in case the saved port is stale. */
     private fun scheduleReconnect() {
         if (!wantConnected || reconnectJob?.isActive == true) return
         reconnectJob = scope.launch {
             var attempt = 0
+            val original = target
             while (wantConnected && _ui.value.phase == LinkUi.Phase.Disconnected) {
                 delay(RECONNECT_BACKOFF_MS[minOf(attempt, RECONNECT_BACKOFF_MS.size - 1)])
                 attempt++
+                val o = original ?: break
+                target = if (attempt % 2 == 0 && o.port != DEFAULT_PORT) o.copy(port = DEFAULT_PORT) else o
                 open()
                 delay(1_500) // give the attempt a moment before judging it
             }

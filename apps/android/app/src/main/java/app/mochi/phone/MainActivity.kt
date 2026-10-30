@@ -37,8 +37,16 @@ class LinkViewModel(app: android.app.Application) : androidx.lifecycle.AndroidVi
     val desktops = MutableStateFlow<List<Desktop>>(emptyList())
 
     init {
-        discoverDesktops(app).onEach { desktops.value = it }.launchIn(viewModelScope)
-        // A paired desktop at a known address: reconnect without asking.
+        discoverDesktops(app).onEach { found ->
+            desktops.value = found
+            // The paired computer may have moved (new IP after a reboot, or a different port):
+            // follow it to wherever discovery sees it now, and reconnect without asking.
+            val saved = store.load() ?: return@onEach
+            val seen = found.firstOrNull { it.name == saved.desktopName } ?: return@onEach
+            if (seen.host != saved.host || seen.port != saved.port) store.updateAddress(seen.host, seen.port)
+            if (link.ui.value.phase == LinkUi.Phase.Disconnected) link.connect(seen)
+        }.launchIn(viewModelScope)
+        // A paired desktop at its last known address: try it right away.
         store.load()?.let { if (it.host.isNotBlank()) link.connect(Desktop(it.desktopName, it.host, it.port)) }
     }
 }

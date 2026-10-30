@@ -200,7 +200,8 @@ async fn begin_task(app: &AppHandle, task: String, scenario: Option<String>) -> 
     };
 
     let (tx, mut rx) = mpsc::channel::<CharacterEvent>(64);
-    let (engine, handle) = TaskEngine::new(brain, perception, actuator, SafetyGate::with_defaults(), state.memory.clone(), tx, EngineConfig::default());
+    let config = EngineConfig { log: Some(Arc::new(|m: &str| log(m))), ..Default::default() };
+    let (engine, handle) = TaskEngine::new(brain, perception, actuator, SafetyGate::with_defaults(), state.memory.clone(), tx, config);
     handle.set_narration(s.narration);
     *state.engine.lock().unwrap() = Some(handle);
 

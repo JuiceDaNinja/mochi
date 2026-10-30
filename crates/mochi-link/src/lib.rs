@@ -28,6 +28,8 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message;
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
+/// Mochi's usual port. The phone also tries this first when a saved address is stale.
+pub const DEFAULT_PORT: u16 = 47321;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LinkError {
@@ -41,7 +43,7 @@ pub enum LinkError {
 pub struct LinkConfig {
     /// Shown on the phone while pairing. Defaults to the hostname.
     pub desktop_name: String,
-    /// 0 picks a free port.
+    /// Preferred port; 0 picks a free one. If the preferred port is taken, a free one is used.
     pub port: u16,
     /// Where paired devices are stored (JSON).
     pub devices_path: PathBuf,
@@ -54,7 +56,7 @@ impl Default for LinkConfig {
     fn default() -> Self {
         Self {
             desktop_name: hostname::get().map(|h| h.to_string_lossy().to_string()).unwrap_or_else(|_| "Mochi desktop".into()),
-            port: 0,
+            port: DEFAULT_PORT,
             devices_path: PathBuf::from("devices.json"),
             advertise: true,
             ping_interval: Duration::from_secs(PING_INTERVAL_SECS),
@@ -127,7 +129,16 @@ impl Link {
 
 impl Link {
     pub async fn start(cfg: LinkConfig, events: mpsc::Sender<LinkEvent>) -> Result<Link, LinkError> {
-        let listener = TcpListener::bind(("0.0.0.0", cfg.port)).await?;
+        // A fixed port keeps the phone's saved address valid across restarts; fall back
+        // to a random one only if it is taken.
+        let listener = match TcpListener::bind(("0.0.0.0", cfg.port)).await {
+            Ok(l) => l,
+            Err(e) if cfg.port != 0 => {
+                eprintln!("[mochi-link] port {} unavailable ({e}); using a random port", cfg.port);
+                TcpListener::bind(("0.0.0.0", 0)).await?
+            }
+            Err(e) => return Err(e.into()),
+        };
         let addr = listener.local_addr()?;
         let (out, _) = broadcast::channel(64);
         let handle = LinkHandle {

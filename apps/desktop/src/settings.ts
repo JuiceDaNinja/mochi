@@ -208,6 +208,7 @@ async function render() {
     try {
       await api.start(task);
       $<HTMLInputElement>("#task").value = "";
+      onClose?.(); // get out of the way: Mochi needs the user's window in front
     } catch (err) {
       $("#probe-result").textContent = String(err);
     }

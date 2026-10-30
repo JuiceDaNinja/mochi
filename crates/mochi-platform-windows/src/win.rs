@@ -197,12 +197,36 @@ impl Walk<'_> {
     }
 }
 
+/// The window Mochi should look at: the foreground window, unless that is Mochi itself
+/// (the user just clicked its panel or bubble), in which case the topmost other app
+/// window is brought forward so keyboard input lands there too.
+fn target_window() -> Result<HWND> {
+    let own_pid = std::process::id();
+    let pid_of = |hwnd: HWND| { let mut pid = 0u32; unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid as *mut u32)) }; pid };
+    let fg = unsafe { GetForegroundWindow() };
+    if !fg.0.is_null() && pid_of(fg) != own_pid {
+        return Ok(fg);
+    }
+    // Z-order walk: EnumWindows enumerates top-level windows front to back.
+    let candidates = top_windows();
+    let next = candidates.into_iter().find(|w| {
+        pid_of(w.hwnd) != own_pid
+            && !unsafe { IsIconic(w.hwnd) }.as_bool()
+            && !w.app_id.is_empty()
+            && !matches!(w.app_id.as_str(), "explorer.exe" | "textinputhost.exe" | "shellexperiencehost.exe" | "searchhost.exe" | "startmenuexperiencehost.exe")
+    });
+    let Some(w) = next else { return Err(perr("no app window to work in (open the app you want Mochi to use)")) };
+    unsafe {
+        let _ = send(&[key(VK_MENU, 0, KEYBD_EVENT_FLAGS(0)), key(VK_MENU, 0, KEYEVENTF_KEYUP)]);
+        let _ = SetForegroundWindow(w.hwnd);
+    }
+    sleep(Duration::from_millis(200));
+    Ok(w.hwnd)
+}
+
 pub fn snapshot(want_screenshot: bool) -> Result<ScreenSnapshot> {
     let ui = automation()?;
-    let hwnd = unsafe { GetForegroundWindow() };
-    if hwnd.0.is_null() {
-        return Err(perr("no foreground window"));
-    }
+    let hwnd = target_window()?;
     let mons = monitors();
     let title = window_title(hwnd);
     let window = WindowInfo {

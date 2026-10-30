@@ -6,6 +6,8 @@ import org.json.JSONObject
 
 const val SERVICE_TYPE = "_mochi._tcp."
 const val MAX_FRAME_BYTES = 64 * 1024
+/** The desktop's usual port (see crates/mochi-link). */
+const val DEFAULT_PORT = 47321
 val RECONNECT_BACKOFF_MS = longArrayOf(1_000, 2_000, 5_000, 10_000)
 
 /** Phone -> desktop. */
