@@ -144,10 +144,7 @@ async fn probe_brain(state: State<'_, AppState>) -> Result<ProbeResult, String> 
             cmd.args(["-p", "Reply with exactly: OK", "--output-format", "json", "--tools", "", "--max-turns", "1", "--no-session-persistence", "--model", &model]);
             cmd.current_dir(&state.data_dir);
             #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x0800_0000);
-            }
+            cmd.creation_flags(0x0800_0000);
             match tokio::time::timeout(Duration::from_secs(60), cmd.output()).await {
                 Ok(Ok(o)) => {
                     let out = String::from_utf8_lossy(&o.stdout).to_string();
@@ -178,10 +175,7 @@ async fn probe_brain(state: State<'_, AppState>) -> Result<ProbeResult, String> 
             cmd.args(["exec", "--skip-git-repo-check", "-C"]).arg(&work).args(["-o"]).arg(work.join("probe.txt")).args(["Reply with exactly: OK"]);
             if let Some(m) = s.codex.model.clone().filter(|m| !m.trim().is_empty()) { cmd.args(["-m", &m]); }
             #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x0800_0000);
-            }
+            cmd.creation_flags(0x0800_0000);
             match tokio::time::timeout(Duration::from_secs(90), cmd.output()).await {
                 Ok(Ok(o)) => {
                     let reply = std::fs::read_to_string(work.join("probe.txt")).unwrap_or_default();
@@ -368,11 +362,14 @@ fn forget_device(state: State<'_, AppState>, device_id: String) {
 #[tauri::command]
 async fn quit_app(app: AppHandle) {
     log("quit requested");
-    {
+    let (engine, link) = {
         let st = app.state::<AppState>();
-        if let Some(h) = st.engine.lock().unwrap().as_ref() { h.cancel(); }
-        if let Some(l) = st.link.lock().unwrap().as_ref() { l.send(DesktopMessage::Sleepy); }
-    }
+        let e = st.engine.lock().unwrap().clone();
+        let l = st.link.lock().unwrap().clone();
+        (e, l)
+    };
+    if let Some(h) = engine { h.cancel(); }
+    if let Some(l) = link { l.send(DesktopMessage::Sleepy); }
     tokio::time::sleep(Duration::from_millis(300)).await;
     app.exit(0);
 }

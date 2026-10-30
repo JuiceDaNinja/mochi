@@ -76,10 +76,7 @@ impl ClaudeBrain {
         }
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         cmd
     }
 
