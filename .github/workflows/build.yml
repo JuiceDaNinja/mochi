@@ -73,7 +73,7 @@ jobs:
           New-Item -ItemType Directory -Force out | Out-Null
           # Cargo workspace: bundles land in the root target/ directory.
           Get-ChildItem -Recurse -Path target,apps/desktop/src-tauri/target -Include *.exe,*.msi -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match 'release' -and $_.FullName -notmatch 'build\\|deps\\' } |
+            Where-Object { $_.FullName -match 'release' -and $_.FullName -notmatch 'build\\|deps\\|mochi-tts' } |
             ForEach-Object { Copy-Item $_.FullName out/ }
           $v = (Get-Content apps/desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
           if (Test-Path out/mochi-desktop.exe) { Rename-Item out/mochi-desktop.exe "Mochi_${v}_x64-portable.exe" }
