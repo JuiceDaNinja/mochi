@@ -17,6 +17,8 @@ mochi-brain-mock = { path = "../../../crates/mochi-brain-mock" }
 mochi-brain-claude = { path = "../../../crates/mochi-brain-claude" }
 mochi-brain-local = { path = "../../../crates/mochi-brain-local" }
 mochi-platform-windows = { path = "../../../crates/mochi-platform-windows" }
+mochi-link = { path = "../../../crates/mochi-link" }
+hostname = "0.4"
 tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true

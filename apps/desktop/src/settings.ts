@@ -14,6 +14,8 @@ type Settings = {
 };
 type LearnedTarget = { id: number; app_id: string; user_phrase: string; ax_label: string | null; hits: number; misses: number };
 type Probe = { ok: boolean; detail: string };
+type LinkStatus = { port: number | null; desktop_name: string; connected: string | null; devices: { device_id: string; name: string; paired_at: string }[] };
+type PairRequest = { session: number; device_name: string; code: string };
 
 const DEFAULTS: Settings = {
   brain: "claude_code",
@@ -36,6 +38,11 @@ const api = hasTauri()
         targets: () => invoke<LearnedTarget[]>("list_targets"),
         forget: (id: number) => invoke<void>("forget_target", { id }),
         wipe: () => invoke<void>("wipe_memory"),
+        link: () => invoke<LinkStatus>("link_status"),
+        pairAnswer: (session: number, yes: boolean) => invoke<void>("pair_answer", { session, yes }),
+        forgetDevice: (device_id: string) => invoke<void>("forget_device", { deviceId: device_id }),
+        onPair: async (cb: (r: PairRequest) => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen<PairRequest>("mochi://pair-request", (e) => cb(e.payload)); },
+        onLink: async (cb: () => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen("mochi://link", () => cb()); },
       };
     })()
   : {
@@ -47,6 +54,11 @@ const api = hasTauri()
       targets: async () => [{ id: 1, app_id: "chrome.exe", user_phrase: "the reply button", ax_label: "Reply", hits: 3, misses: 0 }],
       forget: async () => {},
       wipe: async () => {},
+      link: async (): Promise<LinkStatus> => ({ port: 51234, desktop_name: "DESKTOP-MOCHI", connected: null, devices: [{ device_id: "ab12", name: "Pixel 9", paired_at: "2026-10-30" }] }),
+      pairAnswer: async () => {},
+      forgetDevice: async () => {},
+      onPair: async (cb: (r: PairRequest) => void) => { (window as any).fakePairRequest = () => cb({ session: 1, device_name: "Pixel 9", code: "482913" }); },
+      onLink: async () => {},
     };
 
 const root = document.getElementById("app")!;
@@ -88,6 +100,18 @@ async function render() {
           <label class="check"><input id="local-vision" type="checkbox"> Model can see images (send screenshots)</label>
         </div>
         <div class="row"><button id="probe">Test connection</button><span id="probe-result" class="hint"></span></div>
+      </section>
+
+      <section>
+        <h2>Phone</h2>
+        <p id="link-line" class="hint"></p>
+        <div id="pair" class="pair" hidden>
+          <b id="pair-name"></b> wants to connect. Approve only if the phone shows this code:
+          <div class="code" id="pair-code"></div>
+          <div class="row"><button id="pair-yes" class="primary">Approve</button><button id="pair-no">Deny</button></div>
+        </div>
+        <table id="devices"><thead><tr><th>Paired phone</th><th>Since</th><th></th></tr></thead><tbody></tbody></table>
+        <p class="hint">On the phone, open Mochi and pick this computer from the list, or type the address shown above. Both apps must be open and on the same Wi-Fi.</p>
       </section>
 
       <section>
@@ -186,6 +210,31 @@ async function render() {
   };
   await fillTargets();
   $("#wipe").addEventListener("click", async () => { await api.wipe(); await fillTargets(); });
+
+  const fillLink = async () => {
+    const st = await api.link();
+    const addr = st.port ? `this computer is “${st.desktop_name}”, port ${st.port}` : "phone link is not running";
+    $("#link-line").textContent = st.connected ? `Connected to ${st.connected} — ${addr}.` : `No phone connected — ${addr}.`;
+    const tb = $("#devices tbody");
+    tb.replaceChildren(
+      ...st.devices.map((d) => {
+        const tr = h(`<tr><td>${esc(d.name)}</td><td>${esc(d.paired_at)}</td><td><button class="link">forget</button></td></tr>`);
+        tr.querySelector("button")!.addEventListener("click", async () => { await api.forgetDevice(d.device_id); await fillLink(); });
+        return tr;
+      }),
+    );
+    if (st.devices.length === 0) tb.appendChild(h(`<tr><td colspan="3" class="hint">No phone paired yet.</td></tr>`));
+  };
+  await fillLink();
+  await api.onLink(fillLink);
+  await api.onPair((r) => {
+    $("#pair").hidden = false;
+    $("#pair-name").textContent = r.device_name;
+    $("#pair-code").textContent = r.code.replace(/(\d{3})(\d{3})/, "$1 $2");
+    const done = async (yes: boolean) => { $("#pair").hidden = true; await api.pairAnswer(r.session, yes); setTimeout(() => void fillLink(), 500); };
+    $("#pair-yes").onclick = () => void done(true);
+    $("#pair-no").onclick = () => void done(false);
+  });
 }
 
 function esc(s: string) {

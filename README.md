@@ -1,10 +1,10 @@
 # Mochi
 
-A cute, lovable desktop helper you talk to from your phone. This repo covers **phases 1 and 2**
-of the [technical architecture](https://claude.ai/artifact/LCwDxCP59STfvApw4cQi5N): the
-character, the task engine, the safety gate, the teaching memory, two real brains (Claude Code
-CLI and any local OpenAI-compatible model), and the Windows screen reader + input. Phase 3 adds
-the Android app and the phone ↔ desktop link.
+A cute, lovable desktop helper you talk to from your phone. This repo covers **phases 1–3** of
+the [technical architecture](https://claude.ai/artifact/LCwDxCP59STfvApw4cQi5N): the character,
+the task engine, the safety gate, the teaching memory, two real brains (Claude Code CLI and any
+local OpenAI-compatible model), the Windows screen reader + input, the phone ↔ desktop link, and
+the Android app.
 
 ```
 mochi/
@@ -13,8 +13,10 @@ mochi/
 │  ├─ mochi-brain-claude/      Claude Code CLI adapter (claude -p, stream-json in/out, resumed session per task).
 │  ├─ mochi-brain-local/       OpenAI-compatible adapter for a model on your LAN (Ollama, LM Studio, llama.cpp, vLLM).
 │  ├─ mochi-brain-mock/        Scripted scenarios + fake desktop for demos and tests.
-│  └─ mochi-platform-windows/  UI Automation tree + GDI screenshot (Perception), SendInput (Actuator). Stubs elsewhere.
+│  ├─ mochi-platform-windows/  UI Automation tree + GDI screenshot (Perception), SendInput (Actuator). Stubs elsewhere.
+│  └─ mochi-link/              Phone link: WebSocket server, mDNS, X25519 pairing with a 6-digit code on both screens, HMAC auth, keepalive.
 └─ apps/
+   ├─ android/           Kotlin + Compose. Finds the desktop, pairs, talks, mirrors Mochi's face, Yes/No.
    └─ desktop/           Tauri 2 + Vite/TypeScript. The character window.
       ├─ src/mochi/      model.ts (state machine) · view.ts (SVG Mochi) · motion.ts · voice.ts · bridge.ts · rive.ts
       ├─ src/settings.ts  Settings window: brain picker + test, "Ask Mochi" box, memory list.
@@ -51,6 +53,27 @@ When Mochi cries that it can't find something, click the thing you meant and it 
 Voice uses the Windows speech voices for now (pitched up); the hosted anime voice is wired in
 `voice.ts` behind `HostedTtsVoice` and switches on once the connector exposes `/tts`.
 
+## Pair the phone
+
+The desktop advertises itself on the local network as soon as it starts (Settings → Phone shows
+the name and port). On the phone, open Mochi, pick the computer from the list (or type the
+address), and **both** screens show the same six digits: tap Approve on the phone and Yes on the
+computer. The code is derived from an X25519 key exchange, so a matching code also proves nobody
+is in the middle. After that the phone reconnects on its own whenever both apps are open on the
+same Wi-Fi; nothing wakes a sleeping computer or a closed app.
+
+From the couch: tap **Talk**, say what Mochi should do, watch its face mirror the desktop, and
+answer "Send it?" with the big Yes/No buttons or by voice.
+
+### Build the Android app
+
+Open `apps/android` in Android Studio (Ladybug or newer) and run it on a phone with Android 8+;
+or from the command line with the Android SDK installed: `cd apps/android && gradle wrapper &&
+./gradlew installDebug`. Unit tests (`./gradlew test`) check that the pairing code and HMAC match
+the desktop byte for byte. The Rive face and the wake word are the two drop-ins left: the Compose
+`MochiFace` draws the same character on a Canvas until `mochi.riv` exists, and the Talk button
+stands in for "Hey Mochi" until a Porcupine key is added.
+
 `pnpm tauri build` produces an NSIS installer and an MSI under `apps/desktop/src-tauri/target/release/bundle/`.
 
 ## Design the character without the desktop shell
@@ -73,17 +96,19 @@ pnpm test               # vitest (state machine) + cargo test (gate, memory, eng
 | Claude Code brain | Real; integration-tested against the live CLI (`cargo test -p mochi-brain-claude`) |
 | Local AI brain | Real; tested against an in-process OpenAI-compatible fake server |
 | Windows perception / input | Real code (`win.rs`), reviewed against the `windows` 0.62 crate source but **not yet compiled on Windows** |
-| Settings window | Real: brain picker + test, Ask Mochi, memory list |
+| Settings window | Real: brain picker + test, Ask Mochi, memory list, phone pairing + paired devices |
+| Phone link (desktop) | Real; tested end to end in-process (pair with both approvals, talk both ways, HMAC reconnect, denial, missed pings) |
+| Android app | Real code, **not compiled here** (no Android SDK in this environment); protocol/crypto have JVM unit tests with vectors from the Rust side |
 | Rive animation | Integration point in `rive.ts`; SVG character is used until `public/mochi.riv` exists (inputs documented in that file) |
 | Voice | Windows speech voices in dev; hosted TTS adapter ready, no key yet |
 
-## Phase 3 checklist
+## Phase 4 checklist (hardening)
 
-- [ ] Android app (Kotlin/Compose): wake word, speech-to-text, Mochi face (Rive), Yes/No, pairing approval screen.
-- [ ] Desktop WebSocket server + mDNS advertisement, two-sided pairing with the 6-digit code (`protocol.rs` has the messages).
-- [ ] Mirror `CharacterEvent`s to the phone as `DesktopMessage::State`; take `Utterance` as the task text.
-- [ ] Hosted TTS proxy in the connector (`/tts`) with the key in Windows Credential Manager.
+- [ ] TLS on the phone link (self-signed cert pinned at pairing) — today the LAN WebSocket is cleartext with HMAC auth; the shared secret itself never crosses the wire.
+- [ ] Move the pairing secret and API keys into Windows Credential Manager (desktop) — the phone side already uses EncryptedSharedPreferences.
+- [ ] Hosted TTS proxy in the connector (`/tts`) and the anime voice; Rive assets for both faces; Porcupine wake word.
 - [ ] Per-app allow list UI (the memory already has `app_setting.allowed`), global hotkey for the emergency stop.
+- [ ] macOS + iOS, Codex CLI adapter, pixel-fallback perception for apps with no accessibility tree.
 
 ## Notes
 

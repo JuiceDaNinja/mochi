@@ -10,7 +10,9 @@ use mochi_brain_claude::{ClaudeBrain, ClaudeConfig};
 use mochi_brain_local::{LocalBrain, LocalConfig};
 use mochi_brain_mock::{FakeDesktop, MockBrain};
 use mochi_core::engine::EngineConfig;
+use mochi_core::protocol::DesktopMessage;
 use mochi_core::*;
+use mochi_link::{Link, LinkConfig, LinkEvent, LinkHandle};
 use mochi_platform_windows::WindowsDesktop;
 use serde::{Deserialize, Serialize};
 use settings::{BrainKind, Settings};
@@ -35,6 +37,16 @@ struct AppState {
     memory: Arc<Memory>,
     /// Physical px per logical px of the character window's monitor.
     scale: Mutex<f64>,
+    link: Mutex<Option<LinkHandle>>,
+    link_port: Mutex<Option<u16>>,
+}
+
+#[derive(Serialize, Clone)]
+struct LinkStatus {
+    port: Option<u16>,
+    desktop_name: String,
+    connected: Option<String>,
+    devices: Vec<mochi_link::PairedDevice>,
 }
 
 #[derive(Serialize, Clone)]
@@ -132,7 +144,12 @@ fn local_config(s: &Settings) -> LocalConfig {
 
 /// `scenario` is only used by the mock brain ("gmail", "gmail_lost", "close_unsaved").
 #[tauri::command]
-async fn start_task(app: AppHandle, state: State<'_, AppState>, task: String, scenario: Option<String>) -> Result<(), String> {
+async fn start_task(app: AppHandle, task: String, scenario: Option<String>) -> Result<(), String> {
+    begin_task(&app, task, scenario).await
+}
+
+async fn begin_task(app: &AppHandle, task: String, scenario: Option<String>) -> Result<(), String> {
+    let state = app.state::<AppState>();
     if state.engine.lock().unwrap().is_some() {
         return Err("Mochi is already busy".into());
     }
@@ -171,9 +188,13 @@ async fn start_task(app: AppHandle, state: State<'_, AppState>, task: String, sc
     // are physical pixels; the window works in logical pixels.
     let fwd = app.clone();
     let scale = if matches!(platform, Platform::Windows(_)) { *state.scale.lock().unwrap() } else { 1.0 };
+    let link = state.link.lock().unwrap().clone();
     tauri::async_runtime::spawn(async move {
         let _ = fwd.emit("mochi://event", CharacterEvent::Wake);
         while let Some(ev) = rx.recv().await {
+            if let (Some(l), Some(m)) = (&link, mirror(&ev)) {
+                l.send(m);
+            }
             let ev = match ev {
                 CharacterEvent::MoveTo { bounds, monitor_id } if scale != 1.0 => CharacterEvent::MoveTo {
                     bounds: Bounds { x: bounds.x / scale, y: bounds.y / scale, w: bounds.w / scale, h: bounds.h / scale },
@@ -193,8 +214,116 @@ async fn start_task(app: AppHandle, state: State<'_, AppState>, task: String, sc
             *s.platform.lock().unwrap() = None;
         }
         let _ = done.emit("mochi://task-finished", format!("{outcome:?}"));
+        if let Some(l) = done.state::<AppState>().link.lock().unwrap().clone() {
+            l.send(DesktopMessage::State { state: CharacterState::Idle, line: None });
+        }
     });
     Ok(())
+}
+
+/// What the phone shows for each character event (its face mirrors the desktop).
+fn mirror(ev: &CharacterEvent) -> Option<DesktopMessage> {
+    use CharacterState as S;
+    Some(match ev {
+        CharacterEvent::Wake => DesktopMessage::State { state: S::Listening, line: None },
+        CharacterEvent::Thinking { on: true } => DesktopMessage::State { state: S::Thinking, line: None },
+        CharacterEvent::Thinking { on: false } => DesktopMessage::State { state: S::Working, line: None },
+        CharacterEvent::Narrate { text } | CharacterEvent::Say { text } => DesktopMessage::Narrate { text: text.clone(), audio_url: None },
+        CharacterEvent::Lost { looking_for } => DesktopMessage::State { state: S::Lost, line: Some(format!("Can't find {looking_for}… show me?")) },
+        CharacterEvent::Learning => DesktopMessage::State { state: S::Learning, line: None },
+        CharacterEvent::ConfirmRequest { text } => DesktopMessage::ConfirmRequest { text: text.clone() },
+        CharacterEvent::ConfirmAnswered { .. } => DesktopMessage::State { state: S::Working, line: None },
+        CharacterEvent::Done { summary, .. } => DesktopMessage::Done { summary: summary.clone() },
+        CharacterEvent::Cancel => DesktopMessage::State { state: S::Idle, line: None },
+        CharacterEvent::MoveTo { .. } | CharacterEvent::Gesture { .. } => return None,
+    })
+}
+
+// ---------- phone link ----------
+
+#[tauri::command]
+fn link_status(state: State<'_, AppState>) -> LinkStatus {
+    let link = state.link.lock().unwrap().clone();
+    LinkStatus {
+        port: *state.link_port.lock().unwrap(),
+        desktop_name: hostname::get().map(|h| h.to_string_lossy().to_string()).unwrap_or_else(|_| "Mochi desktop".into()),
+        connected: link.as_ref().and_then(|l| l.connected()).map(|c| c.1),
+        devices: link.as_ref().map(|l| l.devices()).unwrap_or_default(),
+    }
+}
+
+#[tauri::command]
+fn pair_answer(state: State<'_, AppState>, session: u64, yes: bool) {
+    if let Some(l) = state.link.lock().unwrap().as_ref() {
+        l.approve(session, yes);
+    }
+}
+
+#[tauri::command]
+fn forget_device(state: State<'_, AppState>, device_id: String) {
+    if let Some(l) = state.link.lock().unwrap().as_ref() {
+        l.forget(&device_id);
+    }
+}
+
+/// Start the WebSocket server and route phone events into the app.
+fn spawn_link(app: AppHandle, data_dir: PathBuf) {
+    tauri::async_runtime::spawn(async move {
+        let (tx, mut rx) = mpsc::channel::<LinkEvent>(64);
+        let cfg = LinkConfig { devices_path: data_dir.join("devices.json"), ..Default::default() };
+        let link = match Link::start(cfg, tx).await {
+            Ok(l) => l,
+            Err(e) => { eprintln!("[mochi] phone link not started: {e}"); return; }
+        };
+        eprintln!("[mochi] phone link listening on port {}", link.addr.port());
+        {
+            let st = app.state::<AppState>();
+            *st.link.lock().unwrap() = Some(link.handle.clone());
+            *st.link_port.lock().unwrap() = Some(link.addr.port());
+        }
+        let _keep = link._mdns_keepalive();
+        while let Some(ev) = rx.recv().await {
+            match ev {
+                LinkEvent::PairRequest { session, device_name, code } => {
+                    let _ = app.emit("mochi://pair-request", serde_json::json!({ "session": session, "device_name": device_name, "code": code }));
+                }
+                LinkEvent::Paired { .. } | LinkEvent::PairFailed { .. } | LinkEvent::Connected { .. } | LinkEvent::Disconnected { .. } => {
+                    let _ = app.emit("mochi://link", format!("{ev:?}"));
+                }
+                LinkEvent::Wake => {
+                    let busy = app.state::<AppState>().engine.lock().unwrap().is_some();
+                    if !busy {
+                        let _ = app.emit("mochi://event", CharacterEvent::Wake);
+                    }
+                }
+                LinkEvent::Utterance { text, is_final } => {
+                    if is_final && !text.trim().is_empty() {
+                        let busy = app.state::<AppState>().engine.lock().unwrap().is_some();
+                        let lower = text.trim().to_lowercase();
+                        if busy {
+                            // While working, only yes/no/stop are meaningful; everything else is ignored.
+                            let h = app.state::<AppState>().engine.lock().unwrap().clone();
+                            if let Some(h) = h {
+                                if ["yes", "yep", "yeah", "go", "send it", "do it", "okay", "ok", "sure"].contains(&lower.as_str()) { h.answer(true).await; }
+                                else if ["no", "nope", "stop", "wait", "cancel", "don't", "dont"].contains(&lower.as_str()) { h.answer(false).await; }
+                                else if lower.contains("stop") { h.cancel(); }
+                            }
+                        } else if let Err(e) = begin_task(&app, text, None).await {
+                            eprintln!("[mochi] task from phone refused: {e}");
+                        }
+                    }
+                }
+                LinkEvent::UserSpeaking => { let _ = app.emit("mochi://interrupt", ()); }
+                LinkEvent::Answer { yes } => {
+                    let h = app.state::<AppState>().engine.lock().unwrap().clone();
+                    if let Some(h) = h { h.answer(yes).await; }
+                }
+                LinkEvent::Stop => {
+                    if let Some(h) = app.state::<AppState>().engine.lock().unwrap().as_ref() { h.cancel(); }
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -336,7 +465,10 @@ pub fn run() {
                 platform: Mutex::new(None),
                 memory,
                 scale: Mutex::new(1.0),
+                link: Mutex::new(None),
+                link_port: Mutex::new(None),
             });
+            spawn_link(app.handle().clone(), app.path().app_data_dir().expect("app data dir"));
 
             let window = app.get_webview_window("mochi").expect("mochi window");
             if let Ok(Some(m)) = window.current_monitor() {
@@ -368,7 +500,10 @@ pub fn run() {
             wipe_memory,
             app_setting,
             set_app_setting,
-            open_settings
+            open_settings,
+            link_status,
+            pair_answer,
+            forget_device
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mochi");

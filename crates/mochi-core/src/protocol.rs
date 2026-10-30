@@ -15,12 +15,14 @@ pub const RECONNECT_BACKOFF_SECS: &[u64] = &[1, 2, 5, 10];
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PhoneMessage {
-    /// First frame on a fresh phone. Both devices then show the same 6-digit code
-    /// and both must approve before `Paired` is sent.
+    /// First frame on a fresh phone, carrying its X25519 public key. Both devices derive
+    /// the same shared secret, show the same 6-digit code (derived from that secret), and
+    /// both must approve before `Paired` is sent. A matching code proves there is no one in
+    /// the middle.
     PairRequest { device_name: String, public_key_b64: String },
     /// The phone's user tapped Approve.
     PairApprove,
-    /// Later sessions: prove possession of the shared key.
+    /// Later sessions: HMAC-SHA256(shared secret, the nonce from `Hello`).
     Auth { device_id: String, hmac_b64: String },
     Wake,
     Utterance { text: String, #[serde(rename = "final")] is_final: bool },
@@ -35,8 +37,10 @@ pub enum PhoneMessage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DesktopMessage {
-    /// Shown on the phone alongside the desktop's name while both sides approve.
-    PairChallenge { desktop_name: String, code: String, nonce_b64: String },
+    /// First frame on every connection: a fresh nonce for `Auth`.
+    Hello { desktop_name: String, nonce_b64: String },
+    /// Reply to `PairRequest`: the desktop's X25519 public key. Both sides now show `code`.
+    PairChallenge { desktop_name: String, code: String, desktop_public_key_b64: String },
     Paired { device_id: String },
     PairDenied,
     AuthOk,
@@ -50,7 +54,7 @@ pub enum DesktopMessage {
     Ping,
 }
 
-/// Six digits derived deterministically from the pairing nonce so both screens agree.
+/// Six digits derived deterministically from the shared secret so both screens agree.
 pub fn pairing_code(nonce: &[u8]) -> String {
     let mut h: u64 = 0xcbf29ce484222325;
     for b in nonce {
@@ -72,6 +76,8 @@ mod tests {
         assert_eq!(serde_json::from_str::<PhoneMessage>(&s).unwrap(), m);
 
         let d = DesktopMessage::State { state: CharacterState::Confirm, line: Some("Send it?".into()) };
+        let h = DesktopMessage::Hello { desktop_name: "DESK".into(), nonce_b64: "AA==".into() };
+        assert_eq!(serde_json::to_string(&h).unwrap(), r#"{"type":"hello","desktop_name":"DESK","nonce_b64":"AA=="}"#);
         assert_eq!(serde_json::to_string(&d).unwrap(), r#"{"type":"state","state":"confirm","line":"Send it?"}"#);
     }
 

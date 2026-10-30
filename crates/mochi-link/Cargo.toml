@@ -1,0 +1,25 @@
+[package]
+name = "mochi-link"
+description = "Desktop side of the phone link: WebSocket server, mDNS advertisement, two-sided pairing, HMAC auth, keepalive."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mochi-core = { path = "../mochi-core" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio-tungstenite = "0.30"
+futures-util = "0.3"
+mdns-sd = "0.21"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+getrandom = "0.3"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+hostname = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

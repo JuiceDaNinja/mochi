@@ -6,11 +6,12 @@ members = [
     "crates/mochi-brain-claude",
     "crates/mochi-brain-local",
     "crates/mochi-platform-windows",
+    "crates/mochi-link",
     "apps/desktop/src-tauri",
 ]
 # The Tauri app needs platform GUI libraries; `cargo test` at the root runs the
 # portable crates only. Build the app from apps/desktop with `pnpm tauri dev`.
-default-members = ["crates/mochi-core", "crates/mochi-brain-mock", "crates/mochi-brain-claude", "crates/mochi-brain-local", "crates/mochi-platform-windows"]
+default-members = ["crates/mochi-core", "crates/mochi-brain-mock", "crates/mochi-brain-claude", "crates/mochi-brain-local", "crates/mochi-platform-windows", "crates/mochi-link"]
 
 [workspace.package]
 version = "0.1.0"

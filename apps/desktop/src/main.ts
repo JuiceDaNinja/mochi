@@ -95,6 +95,22 @@ async function boot() {
   // Teaching: while Lost, the user clicks the thing they want Mochi to find.
   bridge.onGlobalClick(() => { if (model.state === "lost") void bridge.teach(); });
 
+  // A phone asks to pair: Mochi shows the code and waits for a yes on this side too.
+  bridge.onPairRequest((r) => {
+    const code = r.code.replace(/^(\d{3})(\d{3})$/, "$1 $2");
+    const text = `Phone “${r.device_name}” wants to connect.\nSame code on the phone? ${code}`;
+    view.bubble(text, "speech");
+    voice.speak(`A phone wants to connect. Is the code ${code.split("").join(" ")}?`, { always: true });
+    view.gesture("look_up");
+    view.showConfirm(text, (yes) => {
+      view.showConfirm(null, () => {});
+      view.bubble(yes ? "Yay, we're friends now!" : "Okay, not this one.", "speech");
+      voice.speak(yes ? "Yay, we're friends now!" : "Okay, not this one.", { always: true });
+      void bridge.pairAnswer(r.session, yes);
+    });
+  });
+  bridge.onInterrupt(() => voice.stop());
+
   // Live settings: size and narration.
   if (initial) voice.setNarration(initial.narration);
   bridge.onSettings((s) => {
