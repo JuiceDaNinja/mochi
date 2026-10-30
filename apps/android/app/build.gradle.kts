@@ -41,5 +41,7 @@ dependencies {
     // Rive face: drop mochi.riv into res/raw and switch MochiFace to RiveAnimationView.
     // implementation("app.rive:rive-android:9.13.0")
     testImplementation("junit:junit:4.13.2")
+    // The Android org.json classes are stubs in JVM unit tests; use the real library there.
+    testImplementation("org.json:json:20240303")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

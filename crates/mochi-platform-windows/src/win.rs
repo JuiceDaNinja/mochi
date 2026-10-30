@@ -69,7 +69,7 @@ fn window_app_id(hwnd: HWND) -> String {
 
 fn window_rect(hwnd: HWND) -> Bounds {
     let mut r = RECT::default();
-    unsafe { let _ = GetWindowRect(hwnd, &mut r) };
+    unsafe { let _ = GetWindowRect(hwnd, &mut r); };
     rect_to_bounds(r.left, r.top, r.right, r.bottom)
 }
 
@@ -90,9 +90,9 @@ pub fn monitors() -> Vec<MonitorInfo> {
         BOOL(1)
     }
     let mut v: Vec<MonitorInfo> = vec![];
-    unsafe { let _ = EnumDisplayMonitors(None, None, Some(cb), LPARAM(&mut v as *mut _ as isize)) };
+    unsafe { let _ = EnumDisplayMonitors(None, None, Some(cb), LPARAM(&mut v as *mut _ as isize)); };
     let mut p = POINT::default();
-    unsafe { let _ = GetCursorPos(&mut p) };
+    unsafe { let _ = GetCursorPos(&mut p); };
     for m in v.iter_mut() {
         m.has_cursor = m.bounds.contains(p.x as f64, p.y as f64);
     }
@@ -123,7 +123,7 @@ fn top_windows() -> Vec<TopWindow> {
         BOOL(1)
     }
     let mut v: Vec<TopWindow> = vec![];
-    unsafe { let _ = EnumWindows(Some(cb), LPARAM(&mut v as *mut _ as isize)) };
+    unsafe { let _ = EnumWindows(Some(cb), LPARAM(&mut v as *mut _ as isize)); };
     v
 }
 

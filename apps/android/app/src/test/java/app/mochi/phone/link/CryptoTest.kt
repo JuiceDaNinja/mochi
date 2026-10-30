@@ -21,7 +21,10 @@ class CryptoTest {
 
     @Test
     fun protocolRoundTrips() {
-        assertEquals("""{"type":"utterance","text":"reply to Sara","final":true}""", PhoneMessage.Utterance("reply to Sara", true).toJson())
+        val u = org.json.JSONObject(PhoneMessage.Utterance("reply to Sara", true).toJson())
+        assertEquals("utterance", u.getString("type"))
+        assertEquals("reply to Sara", u.getString("text"))
+        assertEquals(true, u.getBoolean("final"))
         val m = DesktopMessage.parse("""{"type":"state","state":"confirm","line":"Send it?"}""") as DesktopMessage.State
         assertEquals(MochiState.CONFIRM, m.state)
         assertEquals("Send it?", m.line)
