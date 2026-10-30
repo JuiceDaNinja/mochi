@@ -19,7 +19,7 @@ type PairRequest = { session: number; device_name: string; code: string };
 
 const DEFAULTS: Settings = {
   brain: "claude_code",
-  claude: { binary: "claude", model: null },
+  claude: { binary: "claude", model: "sonnet" },
   local: { host: "127.0.0.1", port: 11434, model: "llama3.2", api_key: null, vision: false },
   narration: true,
   scale: 0.8,
@@ -107,7 +107,7 @@ async function render() {
         </div>
         <div id="brain-claude" class="sub">
           <label>Command <input id="claude-binary" type="text"></label>
-          <label>Model <input id="claude-model" type="text" placeholder="default (leave empty), or sonnet / opus"></label>
+          <label>Model <input id="claude-model" type="text" placeholder="sonnet (default) · haiku · opus if your plan has it"></label>
         </div>
         <div id="brain-local" class="sub">
           <div class="row"><label>Host <input id="local-host" type="text"></label><label class="short">Port <input id="local-port" type="number" min="1" max="65535"></label></div>

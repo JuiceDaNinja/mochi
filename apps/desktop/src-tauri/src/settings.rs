@@ -41,7 +41,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             brain: BrainKind::ClaudeCode,
-            claude: ClaudeSettings { binary: "claude".into(), model: None },
+            claude: ClaudeSettings { binary: "claude".into(), model: Some("sonnet".into()) },
             local: LocalSettings { host: "127.0.0.1".into(), port: 11434, model: "llama3.2".into(), api_key: None, vision: false },
             narration: true,
             scale: 0.8,

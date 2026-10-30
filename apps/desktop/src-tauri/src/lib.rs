@@ -130,11 +130,35 @@ async fn probe_brain(state: State<'_, AppState>) -> Result<ProbeResult, String> 
     Ok(match s.brain {
         BrainKind::Mock => ProbeResult { ok: true, detail: "Demo mode: scripted Gmail on a pretend screen.".into() },
         BrainKind::ClaudeCode => {
-            let out = tokio::process::Command::new(&s.claude.binary).arg("--version").output().await;
-            match out {
-                Ok(o) if o.status.success() => ProbeResult { ok: true, detail: format!("Claude Code {}", String::from_utf8_lossy(&o.stdout).trim()) },
-                Ok(o) => ProbeResult { ok: false, detail: format!("`{} --version` failed: {}", s.claude.binary, String::from_utf8_lossy(&o.stderr).trim()) },
-                Err(e) => ProbeResult { ok: false, detail: format!("Cannot start `{}`: {e}. Install Claude Code (npm i -g @anthropic-ai/claude-code) and sign in once.", s.claude.binary) },
+            let version = match tokio::process::Command::new(&s.claude.binary).arg("--version").output().await {
+                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+                Ok(o) => return Ok(ProbeResult { ok: false, detail: format!("`{} --version` failed: {}", s.claude.binary, String::from_utf8_lossy(&o.stderr).trim()) }),
+                Err(e) => return Ok(ProbeResult { ok: false, detail: format!("Cannot start `{}`: {e}. Install Claude Code (npm i -g @anthropic-ai/claude-code) and sign in once.", s.claude.binary) }),
+            };
+            // A real one-line call with the chosen model: catches sign-in and model/plan problems.
+            let model = claude_model(&s);
+            let mut cmd = tokio::process::Command::new(&s.claude.binary);
+            cmd.args(["-p", "Reply with exactly: OK", "--output-format", "json", "--tools", "", "--max-turns", "1", "--no-session-persistence", "--model", &model]);
+            cmd.current_dir(&state.data_dir);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x0800_0000);
+            }
+            match tokio::time::timeout(Duration::from_secs(60), cmd.output()).await {
+                Ok(Ok(o)) => {
+                    let out = String::from_utf8_lossy(&o.stdout).to_string();
+                    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap_or_default();
+                    let is_error = v.get("is_error").and_then(|b| b.as_bool()).unwrap_or(!o.status.success());
+                    let text = v.get("result").and_then(|r| r.as_str()).map(str::to_string).unwrap_or_else(|| String::from_utf8_lossy(&o.stderr).trim().to_string());
+                    if is_error || !o.status.success() {
+                        ProbeResult { ok: false, detail: format!("Claude Code {version} starts, but model \"{model}\" failed: {}", text.chars().take(240).collect::<String>()) }
+                    } else {
+                        ProbeResult { ok: true, detail: format!("Claude Code {version}, model {model}: replied \"{}\".", text.trim().chars().take(40).collect::<String>()) }
+                    }
+                }
+                Ok(Err(e)) => ProbeResult { ok: false, detail: format!("Could not run a test prompt: {e}") },
+                Err(_) => ProbeResult { ok: false, detail: "The test prompt timed out after 60 s. Is Claude Code signed in? Run `claude` once in a terminal.".into() },
             }
         }
         BrainKind::Local => {
@@ -147,6 +171,11 @@ async fn probe_brain(state: State<'_, AppState>) -> Result<ProbeResult, String> 
             }
         }
     })
+}
+
+/// Empty model means "sonnet": the CLI's own default may be a model the account cannot use.
+fn claude_model(s: &Settings) -> String {
+    s.claude.model.clone().filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "sonnet".into())
 }
 
 fn local_config(s: &Settings) -> LocalConfig {
@@ -184,7 +213,7 @@ async fn begin_task(app: &AppHandle, task: String, scenario: Option<String>) -> 
         let brain: Arc<dyn Brain> = match s.brain {
             BrainKind::ClaudeCode => Arc::new(ClaudeBrain::new(ClaudeConfig {
                 binary: s.claude.binary.clone(),
-                model: s.claude.model.clone().filter(|m| !m.is_empty()),
+                model: Some(claude_model(&s)),
                 cwd: Some(state.data_dir.clone()),
                 ..Default::default()
             })),
