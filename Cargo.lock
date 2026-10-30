@@ -997,7 +997,7 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.15"
+version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
@@ -2227,7 +2227,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-brain-claude"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "async-trait",
  "mochi-core",
@@ -2239,7 +2239,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-brain-codex"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2251,7 +2251,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-brain-local"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "async-trait",
  "mochi-core",
@@ -2263,7 +2263,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-brain-mock"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "async-trait",
  "mochi-core",
@@ -2274,7 +2274,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-core"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "async-trait",
  "regex",
@@ -2288,7 +2288,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-desktop"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "hostname",
  "mochi-brain-claude",
@@ -2307,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-link"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -2332,7 +2332,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-platform-windows"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2344,7 +2344,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-secrets"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "keyring",
  "serde_json",
