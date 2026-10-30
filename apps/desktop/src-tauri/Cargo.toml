@@ -14,6 +14,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 mochi-core = { path = "../../../crates/mochi-core" }
 mochi-brain-mock = { path = "../../../crates/mochi-brain-mock" }
+mochi-brain-claude = { path = "../../../crates/mochi-brain-claude" }
+mochi-brain-local = { path = "../../../crates/mochi-brain-local" }
+mochi-platform-windows = { path = "../../../crates/mochi-platform-windows" }
 tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true

@@ -10,6 +10,7 @@ pub mod engine;
 pub mod gate;
 pub mod memory;
 pub mod perception;
+pub mod prompt;
 pub mod protocol;
 pub mod runtime;
 pub mod types;

@@ -9,7 +9,8 @@ import { Sfx, Voice, WebSpeechVoice } from "./mochi/voice";
 async function boot() {
   const bridge: Bridge = hasTauri() ? new TauriBridge() : new BrowserBridge();
   const stage = document.getElementById("stage")!;
-  const scale = Number(new URLSearchParams(location.search).get("scale") ?? (bridge.kind === "browser" ? 1.1 : 0.8));
+  const initial = await bridge.initialSettings();
+  const scale = Number(new URLSearchParams(location.search).get("scale") ?? (bridge.kind === "browser" ? 1.1 : initial?.scale ?? 0.8));
 
   const view: MochiView = (await loadRiveView(stage)) ?? new SvgMochiView(stage, scale);
   const model = new MochiModel();
@@ -92,10 +93,14 @@ async function boot() {
     if (model.state === "idle") menu.toggle();
   });
   // Teaching: while Lost, the user clicks the thing they want Mochi to find.
-  window.addEventListener("mousedown", (e) => {
-    if (model.state !== "lost") return;
-    if ((e.target as HTMLElement).closest?.(".mochi")) return;
-    void bridge.teach();
+  bridge.onGlobalClick(() => { if (model.state === "lost") void bridge.teach(); });
+
+  // Live settings: size and narration.
+  if (initial) voice.setNarration(initial.narration);
+  bridge.onSettings((s) => {
+    voice.setNarration(s.narration);
+    view.root.style.setProperty("--mochi-scale", String(s.scale));
+    if (model.state === "idle") mover.goHome();
   });
 
   // Keyboard: Y / N answer a confirm, Esc cancels.
@@ -117,23 +122,38 @@ function buildMenu(bridge: Bridge, voice: Voice, model: MochiModel) {
   el.className = "menu";
   el.hidden = true;
   el.innerHTML = `
-    <button data-s="gmail">Reply to Sara (demo)</button>
+    <form class="ask"><input type="text" placeholder="Ask Mochi…" aria-label="Ask Mochi" autocomplete="off"><button type="submit">Go</button></form>
+    <div class="menu-sep">Demos</div>
+    <button data-s="gmail">Reply to Sara</button>
     <button data-s="gmail_lost">Same, but I get lost</button>
     <button data-s="close_unsaved">Close an unsaved note</button>
+    <div class="menu-sep"></div>
     <label><input type="checkbox" id="menu-narr" checked> Talk while working</label>
+    <button data-x="settings">Settings…</button>
     <button data-x="stop">Stop</button>`;
   const close = () => { el.hidden = true; };
+  const form = el.querySelector<HTMLFormElement>("form.ask")!;
+  const input = form.querySelector("input")!;
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const task = input.value.trim();
+    if (!task) return;
+    input.value = "";
+    close();
+    void bridge.startTask(task);
+  });
   el.querySelectorAll<HTMLButtonElement>("button[data-s]").forEach((b) =>
-    b.addEventListener("click", () => { close(); void bridge.startTask(b.dataset.s!, "demo"); }),
+    b.addEventListener("click", () => { close(); void bridge.startTask("demo", b.dataset.s!); }),
   );
-  el.querySelector<HTMLButtonElement>("button[data-x]")!.addEventListener("click", () => { close(); void bridge.cancel(); });
+  el.querySelector<HTMLButtonElement>('button[data-x="settings"]')!.addEventListener("click", () => { close(); void bridge.openSettings(); });
+  el.querySelector<HTMLButtonElement>('button[data-x="stop"]')!.addEventListener("click", () => { close(); void bridge.cancel(); });
   el.querySelector<HTMLInputElement>("#menu-narr")!.addEventListener("change", (e) => {
     const on = (e.target as HTMLInputElement).checked;
     voice.setNarration(on);
     void bridge.setNarration(on);
   });
   window.addEventListener("mousedown", (e) => { if (!el.hidden && !(e.target as HTMLElement).closest(".menu, .body-wrap")) close(); });
-  return { el, toggle: () => { if (model.state !== "idle") return; el.hidden = !el.hidden; } };
+  return { el, toggle: () => { if (model.state !== "idle") return; el.hidden = !el.hidden; if (!el.hidden) setTimeout(() => input.focus(), 50); } };
 }
 
 /** Browser-only controls for designing the character. Hidden under Tauri. */
@@ -167,7 +187,7 @@ function devPanel(bridge: BrowserBridge, voice: Voice, model: MochiModel) {
   place("close", W - 60, 70, 28, 28);
 
   panel.querySelectorAll<HTMLButtonElement>("button[data-s]").forEach((b) =>
-    b.addEventListener("click", () => { if (model.state === "idle") void bridge.startTask(b.dataset.s!, "demo"); }),
+    b.addEventListener("click", () => { if (model.state === "idle") void bridge.startTask("demo", b.dataset.s!); }),
   );
   panel.querySelector<HTMLButtonElement>("button[data-x]")!.addEventListener("click", () => void bridge.cancel());
   panel.querySelector<HTMLInputElement>("#narr")!.addEventListener("change", (e) => {

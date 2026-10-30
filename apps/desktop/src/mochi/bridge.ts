@@ -14,7 +14,14 @@ export interface Bridge {
   onEvent(cb: (ev: CharacterEvent) => void): void;
   /** Global cursor position in the character window's pixel space. */
   onCursor(cb: (c: Cursor) => void): void;
-  startTask(scenario: string, task: string): Promise<void>;
+  /** A mouse click anywhere on the desktop (outside Mochi's own window). */
+  onGlobalClick(cb: () => void): void;
+  /** Settings changed in the settings window. */
+  onSettings(cb: (s: { scale: number; narration: boolean }) => void): void;
+  initialSettings(): Promise<{ scale: number; narration: boolean } | null>;
+  /** Real task from the user's words; `scenario` runs a scripted demo instead. */
+  startTask(task: string, scenario?: string): Promise<void>;
+  openSettings(): Promise<void>;
   answer(yes: boolean): Promise<void>;
   /** The user pointed at something while Mochi was lost. Browser: a fake element id. */
   teach(elementId?: number): Promise<void>;
@@ -37,7 +44,11 @@ export class TauriBridge implements Bridge {
   onCursor(cb: (c: Cursor) => void) {
     void listen<Cursor>("mochi://cursor", (e) => cb(e.payload));
   }
-  startTask(scenario: string, task: string) { return invoke<void>("start_task", { scenario, task }); }
+  onGlobalClick(cb: () => void) { void listen("mochi://global-click", () => cb()); }
+  onSettings(cb: (s: { scale: number; narration: boolean }) => void) { void listen<{ scale: number; narration: boolean }>("mochi://settings", (e) => cb(e.payload)); }
+  initialSettings() { return invoke<{ scale: number; narration: boolean }>("get_settings"); }
+  startTask(task: string, scenario?: string) { return invoke<void>("start_task", { task, scenario: scenario ?? null }); }
+  openSettings() { return invoke<void>("open_settings"); }
   answer(yes: boolean) { return invoke<void>("answer", { yes }); }
   teach(elementId?: number) { return invoke<void>("teach", { elementId: elementId ?? null }); }
   setNarration(on: boolean) { return invoke<void>("set_narration", { on }); }
@@ -61,6 +72,11 @@ export class BrowserBridge implements Bridge {
   onCursor(cb: (c: Cursor) => void) {
     window.addEventListener("mousemove", (e) => cb({ x: e.clientX, y: e.clientY }));
   }
+  onGlobalClick(cb: () => void) {
+    window.addEventListener("mousedown", (e) => { if (!(e.target as HTMLElement).closest?.(".mochi")) cb(); });
+  }
+  onSettings() {}
+  async initialSettings() { return null; }
   async answer(yes: boolean) { this.waitingConfirm?.(yes); }
   async teach() { this.waitingTeach?.(); }
   async setNarration(on: boolean) { this.narrationOn = on; }
@@ -97,7 +113,9 @@ export class BrowserBridge implements Bridge {
     return new Promise((res) => { this.waitingTeach = () => { this.waitingTeach = null; res(); }; });
   }
 
-  async startTask(scenario: string, _task: string) {
+  async openSettings() { window.open("/settings.html", "mochi-settings", "width=520,height=640"); }
+
+  async startTask(_task: string, scenario = "gmail") {
     this.cancelled = false;
     this.emit({ type: "wake" });
     await this.sleep(900);

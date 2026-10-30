@@ -1,0 +1,17 @@
+[package]
+name = "mochi-brain-claude"
+description = "Brain adapter: Claude Code CLI in headless mode (claude -p, stream-json in and out)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mochi-core = { path = "../mochi-core" }
+async-trait.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

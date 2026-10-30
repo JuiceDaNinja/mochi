@@ -164,7 +164,13 @@ body.dev { background: linear-gradient(180deg, #e9eef5 0%, #d7dfe9 100%); }
 }
 .menu button, .menu label { font: inherit; text-align: left; padding: 6px 10px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; display: flex; gap: 8px; align-items: center; }
 .menu button:hover, .menu label:hover { background: #f6ebe1; }
-.menu button[data-x] { color: #a04050; }
+.menu button[data-x="stop"] { color: #a04050; }
+.menu .menu-sep { font-size: 11px; color: #9a8a7f; text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 10px 2px; border-top: 1px solid #f0e6dc; margin-top: 2px; }
+.menu .menu-sep:empty { padding: 0; margin-top: 4px; }
+.menu form.ask { display: flex; gap: 6px; padding: 2px; }
+.menu form.ask input { flex: 1; min-width: 0; font: inherit; padding: 7px 10px; border-radius: 10px; border: 1px solid #e8dccf; background: #fff; color: var(--bubble-ink); }
+.menu form.ask input:focus { outline: 2px solid #ffb3bf; border-color: transparent; }
+.menu form.ask button { font: inherit; font-weight: 700; padding: 6px 12px; border-radius: 10px; border: 0; background: #ffb3bf; color: #5a1f2b; cursor: pointer; }
 
 /* ---------- Dev panel (browser only) ---------- */
 .dev-panel {

@@ -1,23 +1,40 @@
-//! Mochi desktop connector (Tauri 2). Phase 1: the character window + the task engine
-//! running the mock brain against a fake Gmail screen. Phase 2 swaps `FakeDesktop` for
-//! Windows UI Automation / SendInput and `MockBrain` for the Claude Code CLI adapter.
+//! Mochi desktop connector (Tauri 2).
+//!
+//! Phase 2: the character window plus a real task engine. The brain is picked in settings
+//! (Claude Code CLI, a local model over IP:port, or the scripted mock); the screen is read
+//! with Windows UI Automation and driven with SendInput when running on Windows.
 
+mod settings;
+
+use mochi_brain_claude::{ClaudeBrain, ClaudeConfig};
+use mochi_brain_local::{LocalBrain, LocalConfig};
 use mochi_brain_mock::{FakeDesktop, MockBrain};
 use mochi_core::engine::EngineConfig;
 use mochi_core::*;
+use mochi_platform_windows::WindowsDesktop;
 use serde::{Deserialize, Serialize};
+use settings::{BrainKind, Settings};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Listener, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Listener, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tokio::sync::mpsc;
 
-#[derive(Default)]
+/// Where the running task reads the screen from.
+#[derive(Clone)]
+enum Platform {
+    Fake(Arc<FakeDesktop>),
+    Windows(Arc<WindowsDesktop>),
+}
+
 struct AppState {
+    data_dir: PathBuf,
+    settings: Mutex<Settings>,
     engine: Mutex<Option<EngineHandle>>,
-    /// Last fake screen used, so `teach` can hand the engine a snapshot + element.
-    desktop: Mutex<Option<Arc<FakeDesktop>>>,
-    narration: Mutex<bool>,
-    memory: Mutex<Option<Arc<Memory>>>,
+    platform: Mutex<Option<Platform>>,
+    memory: Arc<Memory>,
+    /// Physical px per logical px of the character window's monitor.
+    scale: Mutex<f64>,
 }
 
 #[derive(Serialize, Clone)]
@@ -39,69 +56,143 @@ struct BodyRect {
     h: f64,
 }
 
+#[derive(Serialize, Clone)]
+struct ProbeResult {
+    ok: bool,
+    detail: String,
+}
+
+// ---------- window / character commands ----------
+
 #[tauri::command]
-fn primary_monitor(window: WebviewWindow) -> Result<MonitorDto, String> {
+fn primary_monitor(window: WebviewWindow, state: State<'_, AppState>) -> Result<MonitorDto, String> {
     let m = window.current_monitor().map_err(|e| e.to_string())?.or_else(|| window.primary_monitor().ok().flatten());
     let Some(m) = m else { return Err("no monitor".into()) };
     let p = m.position();
     let s = m.size();
     let scale = m.scale_factor();
-    Ok(MonitorDto {
-        id: 0,
-        x: p.x as f64 / scale,
-        y: p.y as f64 / scale,
-        w: s.width as f64 / scale,
-        h: s.height as f64 / scale,
-        scale,
-        primary: true,
-    })
+    *state.scale.lock().unwrap() = scale;
+    Ok(MonitorDto { id: 0, x: p.x as f64 / scale, y: p.y as f64 / scale, w: s.width as f64 / scale, h: s.height as f64 / scale, scale, primary: true })
 }
 
 #[tauri::command]
-async fn start_task(app: AppHandle, state: State<'_, AppState>, scenario: String, task: String) -> Result<(), String> {
-    if state.engine.lock().unwrap().is_some() {
-        return Err("a task is already running".into());
+fn get_settings(state: State<'_, AppState>) -> Settings {
+    state.settings.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn set_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+    settings.save(&state.data_dir).map_err(|e| e.to_string())?;
+    *state.settings.lock().unwrap() = settings.clone();
+    if let Some(h) = state.engine.lock().unwrap().as_ref() {
+        h.set_narration(settings.narration);
     }
-    let memory = {
-        let mut g = state.memory.lock().unwrap();
-        if g.is_none() {
-            let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            *g = Some(Arc::new(Memory::open(dir.join("mochi.sqlite")).map_err(|e| e.to_string())?));
+    let _ = app.emit("mochi://settings", settings);
+    Ok(())
+}
+
+/// Can we reach the configured brain? Shown as a line in the settings window.
+#[tauri::command]
+async fn probe_brain(state: State<'_, AppState>) -> Result<ProbeResult, String> {
+    let s = state.settings.lock().unwrap().clone();
+    Ok(match s.brain {
+        BrainKind::Mock => ProbeResult { ok: true, detail: "Demo mode: scripted Gmail on a pretend screen.".into() },
+        BrainKind::ClaudeCode => {
+            let out = tokio::process::Command::new(&s.claude.binary).arg("--version").output().await;
+            match out {
+                Ok(o) if o.status.success() => ProbeResult { ok: true, detail: format!("Claude Code {}", String::from_utf8_lossy(&o.stdout).trim()) },
+                Ok(o) => ProbeResult { ok: false, detail: format!("`{} --version` failed: {}", s.claude.binary, String::from_utf8_lossy(&o.stderr).trim()) },
+                Err(e) => ProbeResult { ok: false, detail: format!("Cannot start `{}`: {e}. Install Claude Code (npm i -g @anthropic-ai/claude-code) and sign in once.", s.claude.binary) },
+            }
         }
-        g.clone().unwrap()
+        BrainKind::Local => {
+            let brain = LocalBrain::new(local_config(&s));
+            match brain.probe().await {
+                Ok(models) if models.iter().any(|m| m == &s.local.model) => ProbeResult { ok: true, detail: format!("Connected. Model {} is available.", s.local.model) },
+                Ok(models) if models.is_empty() => ProbeResult { ok: true, detail: "Connected; the server did not list its models.".into() },
+                Ok(models) => ProbeResult { ok: false, detail: format!("Connected, but {} is not listed. Available: {}", s.local.model, models.join(", ")) },
+                Err(e) => ProbeResult { ok: false, detail: format!("Cannot reach http://{}:{} — {e}", s.local.host, s.local.port) },
+            }
+        }
+    })
+}
+
+fn local_config(s: &Settings) -> LocalConfig {
+    LocalConfig {
+        host: s.local.host.clone(),
+        port: s.local.port,
+        model: s.local.model.clone(),
+        api_key: s.local.api_key.clone().filter(|k| !k.is_empty()),
+        vision: s.local.vision,
+        ..Default::default()
+    }
+}
+
+// ---------- tasks ----------
+
+/// `scenario` is only used by the mock brain ("gmail", "gmail_lost", "close_unsaved").
+#[tauri::command]
+async fn start_task(app: AppHandle, state: State<'_, AppState>, task: String, scenario: Option<String>) -> Result<(), String> {
+    if state.engine.lock().unwrap().is_some() {
+        return Err("Mochi is already busy".into());
+    }
+    let s = state.settings.lock().unwrap().clone();
+    let use_mock = s.brain == BrainKind::Mock || scenario.is_some() || !WindowsDesktop::available();
+    let scenario = scenario.unwrap_or_else(|| "gmail".into());
+
+    let (brain, platform): (Arc<dyn Brain>, Platform) = if use_mock {
+        let d = Arc::new(if scenario == "close_unsaved" { FakeDesktop::unsaved_doc() } else { FakeDesktop::gmail() });
+        (Arc::new(MockBrain::scenario(&scenario)), Platform::Fake(d))
+    } else {
+        let brain: Arc<dyn Brain> = match s.brain {
+            BrainKind::ClaudeCode => Arc::new(ClaudeBrain::new(ClaudeConfig {
+                binary: s.claude.binary.clone(),
+                model: s.claude.model.clone().filter(|m| !m.is_empty()),
+                cwd: Some(state.data_dir.clone()),
+                ..Default::default()
+            })),
+            BrainKind::Local => Arc::new(LocalBrain::new(local_config(&s))),
+            BrainKind::Mock => unreachable!(),
+        };
+        (brain, Platform::Windows(Arc::new(WindowsDesktop::new())))
     };
-    let desktop = Arc::new(if scenario == "close_unsaved" { FakeDesktop::unsaved_doc() } else { FakeDesktop::gmail() });
-    *state.desktop.lock().unwrap() = Some(desktop.clone());
+    *state.platform.lock().unwrap() = Some(platform.clone());
+    let (perception, actuator): (Arc<dyn Perception>, Arc<dyn Actuator>) = match &platform {
+        Platform::Fake(d) => (d.clone(), d.clone()),
+        Platform::Windows(w) => (w.clone(), w.clone()),
+    };
 
     let (tx, mut rx) = mpsc::channel::<CharacterEvent>(64);
-    let (engine, handle) = TaskEngine::new(
-        Arc::new(MockBrain::scenario(&scenario)),
-        desktop.clone(),
-        desktop,
-        SafetyGate::with_defaults(),
-        memory,
-        tx,
-        EngineConfig::default(),
-    );
-    handle.set_narration(*state.narration.lock().unwrap());
+    let (engine, handle) = TaskEngine::new(brain, perception, actuator, SafetyGate::with_defaults(), state.memory.clone(), tx, EngineConfig::default());
+    handle.set_narration(s.narration);
     *state.engine.lock().unwrap() = Some(handle);
 
-    // Forward engine events to the character window (and, in phase 3, the phone).
+    // Forward engine events to the character window. Screen bounds from the real platform
+    // are physical pixels; the window works in logical pixels.
     let fwd = app.clone();
+    let scale = if matches!(platform, Platform::Windows(_)) { *state.scale.lock().unwrap() } else { 1.0 };
     tauri::async_runtime::spawn(async move {
         let _ = fwd.emit("mochi://event", CharacterEvent::Wake);
         while let Some(ev) = rx.recv().await {
+            let ev = match ev {
+                CharacterEvent::MoveTo { bounds, monitor_id } if scale != 1.0 => CharacterEvent::MoveTo {
+                    bounds: Bounds { x: bounds.x / scale, y: bounds.y / scale, w: bounds.w / scale, h: bounds.h / scale },
+                    monitor_id,
+                },
+                other => other,
+            };
             let _ = fwd.emit("mochi://event", ev);
         }
     });
     let done = app.clone();
     tauri::async_runtime::spawn(async move {
         let outcome = engine.run(task).await;
-        tracing_log(&format!("task finished: {outcome:?}"));
+        eprintln!("[mochi] task finished: {outcome:?}");
         if let Some(s) = done.try_state::<AppState>() {
             *s.engine.lock().unwrap() = None;
+            *s.platform.lock().unwrap() = None;
         }
+        let _ = done.emit("mochi://task-finished", format!("{outcome:?}"));
     });
     Ok(())
 }
@@ -115,22 +206,30 @@ async fn answer(state: State<'_, AppState>, yes: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Phase 1: with the fake screen, teaching picks the element the scenario was missing
-/// (Reply). Phase 2 reads the real element under the cursor via UI Automation.
+/// The user pointed at the thing Mochi could not find. Real platform: the element under
+/// the cursor. Mock: the Reply button the scenario was missing.
 #[tauri::command]
 async fn teach(state: State<'_, AppState>, element_id: Option<u32>) -> Result<(), String> {
     let h = state.engine.lock().unwrap().clone();
-    let d = state.desktop.lock().unwrap().clone();
-    if let (Some(h), Some(d)) = (h, d) {
-        let screen = d.snapshot(false).await.map_err(|e| e.to_string())?;
-        h.teach(screen, element_id.unwrap_or(mochi_brain_mock::ids::REPLY)).await;
+    let p = state.platform.lock().unwrap().clone();
+    let (Some(h), Some(p)) = (h, p) else { return Ok(()) };
+    match p {
+        Platform::Fake(d) => {
+            let screen = d.snapshot(false).await.map_err(|e| e.to_string())?;
+            h.teach(screen, element_id.unwrap_or(mochi_brain_mock::ids::REPLY)).await;
+        }
+        Platform::Windows(w) => {
+            if let Some((screen, id)) = w.element_under_cursor().await.map_err(|e| e.to_string())? {
+                h.teach(screen, id).await;
+            }
+        }
     }
     Ok(())
 }
 
 #[tauri::command]
 fn set_narration(state: State<'_, AppState>, on: bool) {
-    *state.narration.lock().unwrap() = on;
+    state.settings.lock().unwrap().narration = on;
     if let Some(h) = state.engine.lock().unwrap().as_ref() {
         h.set_narration(on);
     }
@@ -143,30 +242,76 @@ fn cancel_task(state: State<'_, AppState>) {
     }
 }
 
-fn tracing_log(msg: &str) {
-    eprintln!("[mochi] {msg}");
+// ---------- memory ----------
+
+#[tauri::command]
+fn list_targets(state: State<'_, AppState>) -> Result<Vec<LearnedTarget>, String> {
+    state.memory.all_targets().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn forget_target(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    state.memory.forget(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn wipe_memory(state: State<'_, AppState>) -> Result<(), String> {
+    state.memory.wipe().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn app_setting(state: State<'_, AppState>, app_id: String) -> Result<mochi_core::memory::AppSetting, String> {
+    state.memory.app_setting(&app_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_app_setting(state: State<'_, AppState>, setting: mochi_core::memory::AppSetting) -> Result<(), String> {
+    state.memory.set_app_setting(&setting).map_err(|e| e.to_string())
+}
+
+// ---------- settings window ----------
+
+#[tauri::command]
+fn open_settings(app: AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("settings") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
+        .title("Mochi settings")
+        .inner_size(520.0, 640.0)
+        .min_inner_size(420.0, 480.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Poll the global cursor at ~60 Hz: emit it for the eyes, and toggle click-through so
-/// the window ignores the mouse everywhere except over Mochi's body.
+/// the window ignores the mouse everywhere except over Mochi (and its menu).
 fn spawn_cursor_loop(window: WebviewWindow, body: Arc<Mutex<Option<BodyRect>>>) {
     tauri::async_runtime::spawn(async move {
         let mut over_body = false;
+        let mut button_was_down = false;
         let _ = window.set_ignore_cursor_events(true);
         loop {
             tokio::time::sleep(Duration::from_millis(16)).await;
+            // Global click edge (release), used by the teaching loop while Mochi is lost.
+            let down = mochi_platform_windows::left_button_down();
+            if button_was_down && !down && !over_body {
+                let _ = window.emit("mochi://global-click", ());
+            }
+            button_was_down = down;
             let Ok(pos) = window.cursor_position() else { continue };
             let scale = window.scale_factor().unwrap_or(1.0);
             let (x, y) = (pos.x / scale, pos.y / scale);
             let _ = window.emit("mochi://cursor", serde_json::json!({ "x": x, "y": y }));
-
-            // Body rect arrives in window-local logical px; convert the cursor to the same space.
             let origin = window.outer_position().map(|p| (p.x as f64 / scale, p.y as f64 / scale)).unwrap_or((0.0, 0.0));
             let (lx, ly) = (x - origin.0, y - origin.1);
             let hit = body
                 .lock()
                 .unwrap()
-                .map(|b| lx >= b.x - 6.0 && lx <= b.x + b.w + 6.0 && ly >= b.y - 48.0 && ly <= b.y + b.h + 6.0)
+                .map(|b| lx >= b.x - 6.0 && lx <= b.x + b.w + 6.0 && ly >= b.y - 6.0 && ly <= b.y + b.h + 6.0)
                 .unwrap_or(false);
             if hit != over_body {
                 over_body = hit;
@@ -179,10 +324,21 @@ fn spawn_cursor_loop(window: WebviewWindow, body: Arc<Mutex<Option<BodyRect>>>) 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(AppState { narration: Mutex::new(true), ..Default::default() })
         .setup(|app| {
+            let data_dir = app.path().app_data_dir().expect("app data dir");
+            std::fs::create_dir_all(&data_dir).ok();
+            let memory = Arc::new(Memory::open(data_dir.join("mochi.sqlite")).expect("open memory db"));
+            let settings = Settings::load(&data_dir);
+            app.manage(AppState {
+                data_dir,
+                settings: Mutex::new(settings),
+                engine: Mutex::new(None),
+                platform: Mutex::new(None),
+                memory,
+                scale: Mutex::new(1.0),
+            });
+
             let window = app.get_webview_window("mochi").expect("mochi window");
-            // Cover the monitor the cursor is on; Mochi positions itself inside.
             if let Ok(Some(m)) = window.current_monitor() {
                 let _ = window.set_position(*m.position());
                 let _ = window.set_size(*m.size());
@@ -197,7 +353,23 @@ pub fn run() {
             spawn_cursor_loop(window, body);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![primary_monitor, start_task, answer, teach, set_narration, cancel_task])
+        .invoke_handler(tauri::generate_handler![
+            primary_monitor,
+            get_settings,
+            set_settings,
+            probe_brain,
+            start_task,
+            answer,
+            teach,
+            set_narration,
+            cancel_task,
+            list_targets,
+            forget_target,
+            wipe_memory,
+            app_setting,
+            set_app_setting,
+            open_settings
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Mochi");
 }

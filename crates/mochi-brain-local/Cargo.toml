@@ -1,0 +1,17 @@
+[package]
+name = "mochi-brain-local"
+description = "Brain adapter: any OpenAI-compatible chat endpoint on the LAN (IP:port)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mochi-core = { path = "../mochi-core" }
+async-trait.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }

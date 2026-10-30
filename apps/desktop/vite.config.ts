@@ -4,6 +4,10 @@ import { defineConfig } from "vite";
 export default defineConfig({
   clearScreen: false,
   server: { port: 1420, strictPort: true },
-  build: { target: ["es2022", "chrome110", "safari16"], sourcemap: false },
+  build: {
+    target: ["es2022", "chrome110", "safari16"],
+    sourcemap: false,
+    rollupOptions: { input: { index: "index.html", settings: "settings.html" } },
+  },
   test: { environment: "node", include: ["src/**/*.test.ts"] },
 } as any);
