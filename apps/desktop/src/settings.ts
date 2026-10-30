@@ -25,11 +25,22 @@ const DEFAULTS: Settings = {
   scale: 0.8,
 };
 
+// Anything that goes wrong shows on the page (release builds have no devtools).
+const root = document.getElementById("app")!;
+function showError(where: string, e: unknown) {
+  const pre = document.createElement("pre");
+  pre.className = "error";
+  pre.textContent = `${where}: ${e instanceof Error ? e.message : String(e)}`;
+  root.prepend(pre);
+}
+window.addEventListener("error", (e) => showError("error", e.message));
+window.addEventListener("unhandledrejection", (e) => showError("rejection", (e as PromiseRejectionEvent).reason));
+
 // ---- backend (Tauri or browser stub) ----
-const api = hasTauri()
-  ? await (async () => {
-      const { invoke } = await import("@tauri-apps/api/core");
-      return {
+async function makeApi() {
+  if (!hasTauri()) return browserApi();
+  const { invoke } = await import("@tauri-apps/api/core");
+  return {
         get: () => invoke<Settings>("get_settings"),
         set: (s: Settings) => invoke<void>("set_settings", { settings: s }),
         probe: () => invoke<Probe>("probe_brain"),
@@ -43,9 +54,12 @@ const api = hasTauri()
         forgetDevice: (device_id: string) => invoke<void>("forget_device", { deviceId: device_id }),
         onPair: async (cb: (r: PairRequest) => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen<PairRequest>("mochi://pair-request", (e) => cb(e.payload)); },
         onLink: async (cb: () => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen("mochi://link", () => cb()); },
+        close: async () => { const { getCurrentWindow } = await import("@tauri-apps/api/window"); await getCurrentWindow().close(); },
+        log: (line: string) => invoke<void>("log_js", { line }).catch(() => {}),
       };
-    })()
-  : {
+}
+function browserApi() {
+  return {
       get: async () => ({ ...DEFAULTS }),
       set: async () => {},
       probe: async () => ({ ok: false, detail: "Browser preview: no backend." }),
@@ -59,10 +73,13 @@ const api = hasTauri()
       forgetDevice: async () => {},
       onPair: async (cb: (r: PairRequest) => void) => { (window as any).fakePairRequest = () => cb({ session: 1, device_name: "Pixel 9", code: "482913" }); },
       onLink: async () => {},
+      close: async () => window.close(),
+      log: async (line: string) => console.log(line),
     };
-
-const root = document.getElementById("app")!;
-let settings = await api.get();
+}
+type Api = Awaited<ReturnType<typeof makeApi>>;
+let api: Api;
+let settings: Settings = { ...DEFAULTS };
 
 function h(html: string): HTMLElement {
   const t = document.createElement("template");
@@ -74,7 +91,7 @@ async function render() {
   root.replaceChildren(
     h(`
     <div class="page">
-      <header><img src="/icon-128.png" alt="" width="40" height="40"><div><h1>Mochi</h1><p>Settings</p></div></header>
+      <header><img src="/icon-128.png" alt="" width="40" height="40"><div><h1>Mochi</h1><p>Settings</p></div><button id="close" class="close" title="Close">✕</button></header>
 
       <section>
         <h2>Ask Mochi</h2>
@@ -132,6 +149,8 @@ async function render() {
   );
 
   const $ = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
+  $("#close").addEventListener("click", () => void api.close());
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") void api.close(); });
   const radio = root.querySelector<HTMLInputElement>(`input[name=brain][value=${settings.brain}]`);
   if (radio) radio.checked = true;
   $<HTMLInputElement>("#claude-binary").value = settings.claude.binary;
@@ -241,4 +260,14 @@ function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 
-await render();
+(async () => {
+  try {
+    api = await makeApi();
+    await api.log("settings window: script started");
+    settings = await api.get();
+    await render();
+    await api.log("settings window: rendered");
+  } catch (e) {
+    showError("settings failed to start", e);
+  }
+})();

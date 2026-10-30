@@ -24,6 +24,8 @@ export interface Bridge {
   pairAnswer(session: number, yes: boolean): Promise<void>;
   /** The user started speaking on the phone: stop talking. */
   onInterrupt(cb: () => void): void;
+  /** Append a line to the desktop's mochi.log (release builds have no console). */
+  log(line: string): Promise<void>;
   /** Real task from the user's words; `scenario` runs a scripted demo instead. */
   startTask(task: string, scenario?: string): Promise<void>;
   openSettings(): Promise<void>;
@@ -55,6 +57,7 @@ export class TauriBridge implements Bridge {
   onPairRequest(cb: (r: { session: number; device_name: string; code: string }) => void) { void listen<{ session: number; device_name: string; code: string }>("mochi://pair-request", (e) => cb(e.payload)); }
   pairAnswer(session: number, yes: boolean) { return invoke<void>("pair_answer", { session, yes }); }
   onInterrupt(cb: () => void) { void listen("mochi://interrupt", () => cb()); }
+  log(line: string) { return invoke<void>("log_js", { line }).catch(() => {}); }
   startTask(task: string, scenario?: string) { return invoke<void>("start_task", { task, scenario: scenario ?? null }); }
   openSettings() { return invoke<void>("open_settings"); }
   answer(yes: boolean) { return invoke<void>("answer", { yes }); }
@@ -90,6 +93,7 @@ export class BrowserBridge implements Bridge {
   }
   async pairAnswer() {}
   onInterrupt() {}
+  async log(line: string) { console.log("[mochi]", line); }
   async answer(yes: boolean) { this.waitingConfirm?.(yes); }
   async teach() { this.waitingTeach?.(); }
   async setNarration(on: boolean) { this.narrationOn = on; }

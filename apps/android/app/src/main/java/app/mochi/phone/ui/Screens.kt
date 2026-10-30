@@ -104,6 +104,9 @@ fun PairScreen(ui: LinkUi, onApprove: () -> Unit, onCancel: () -> Unit) {
             Button(onClick = onApprove, colors = ButtonDefaults.buttonColors(containerColor = Pink, contentColor = PinkInk)) { Text("Approve") }
         }
         TextButton(onClick = onCancel) { Text("Cancel") }
+        if (ui.error != null) Text(ui.error, color = Color(0xFFA04050), textAlign = TextAlign.Center, fontSize = 13.sp)
+        Spacer(Modifier.height(16.dp))
+        ui.trail.forEach { Text(it, color = Muted, fontSize = 11.sp) }
     }
 }
 

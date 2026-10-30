@@ -24,6 +24,24 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Listener, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tokio::sync::mpsc;
 
+/// Release builds have no console: append diagnostics to <app data>/mochi.log.
+static LOG_PATH: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+fn log(msg: &str) {
+    eprintln!("[mochi] {msg}");
+    if let Some(p) = LOG_PATH.get() {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+            let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            let _ = writeln!(f, "{secs} {msg}");
+        }
+    }
+}
+
+#[tauri::command]
+fn log_js(line: String) {
+    log(&format!("js: {line}"));
+}
+
 /// Where the running task reads the screen from.
 #[derive(Clone)]
 enum Platform {
@@ -210,7 +228,7 @@ async fn begin_task(app: &AppHandle, task: String, scenario: Option<String>) -> 
     let done = app.clone();
     tauri::async_runtime::spawn(async move {
         let outcome = engine.run(task).await;
-        eprintln!("[mochi] task finished: {outcome:?}");
+        log(&format!("task finished: {outcome:?}"));
         if let Some(s) = done.try_state::<AppState>() {
             *s.engine.lock().unwrap() = None;
             *s.platform.lock().unwrap() = None;
@@ -275,9 +293,9 @@ fn spawn_link(app: AppHandle, data_dir: PathBuf) {
         let cfg = LinkConfig { devices_path: data_dir.join("devices.json"), ..Default::default() };
         let link = match Link::start(cfg, tx).await {
             Ok(l) => l,
-            Err(e) => { eprintln!("[mochi] phone link not started: {e}"); return; }
+            Err(e) => { log(&format!("phone link not started: {e}")); return; }
         };
-        eprintln!("[mochi] phone link listening on port {}", link.addr.port());
+        log(&format!("phone link listening on port {}", link.addr.port()));
         {
             let st = app.state::<AppState>();
             *st.link.lock().unwrap() = Some(link.handle.clone());
@@ -287,9 +305,11 @@ fn spawn_link(app: AppHandle, data_dir: PathBuf) {
         while let Some(ev) = rx.recv().await {
             match ev {
                 LinkEvent::PairRequest { session, device_name, code } => {
+                    log(&format!("link: pair request from {device_name}, code {code}"));
                     let _ = app.emit("mochi://pair-request", serde_json::json!({ "session": session, "device_name": device_name, "code": code }));
                 }
                 LinkEvent::Paired { .. } | LinkEvent::PairFailed { .. } | LinkEvent::Connected { .. } | LinkEvent::Disconnected { .. } => {
+                    log(&format!("link: {ev:?}"));
                     let _ = app.emit("mochi://link", format!("{ev:?}"));
                 }
                 LinkEvent::Wake => {
@@ -310,8 +330,11 @@ fn spawn_link(app: AppHandle, data_dir: PathBuf) {
                                 else if ["no", "nope", "stop", "wait", "cancel", "don't", "dont"].contains(&lower.as_str()) { h.answer(false).await; }
                                 else if lower.contains("stop") { h.cancel(); }
                             }
-                        } else if let Err(e) = begin_task(&app, text, None).await {
-                            eprintln!("[mochi] task from phone refused: {e}");
+                        } else {
+                            log(&format!("task from phone: {text:?}"));
+                            if let Err(e) = begin_task(&app, text, None).await {
+                                log(&format!("task from phone refused: {e}"));
+                            }
                         }
                     }
                 }
@@ -409,13 +432,20 @@ fn open_settings(app: AppHandle) -> Result<(), String> {
         let _ = w.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
+    let r = WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
         .title("Mochi settings")
-        .inner_size(520.0, 640.0)
+        .inner_size(520.0, 680.0)
         .min_inner_size(420.0, 480.0)
-        .build()
-        .map_err(|e| e.to_string())?;
-    Ok(())
+        .decorations(true)
+        .resizable(true)
+        .always_on_top(false)
+        .focused(true)
+        .center()
+        .build();
+    match r {
+        Ok(_) => { log("settings window created"); Ok(()) }
+        Err(e) => { log(&format!("settings window failed: {e}")); Err(e.to_string()) }
+    }
 }
 
 /// Poll the global cursor at ~60 Hz: emit it for the eyes, and toggle click-through so
@@ -458,6 +488,8 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&data_dir).ok();
+            let _ = LOG_PATH.set(data_dir.join("mochi.log"));
+            log(&format!("Mochi {} starting; data dir {}", env!("CARGO_PKG_VERSION"), data_dir.display()));
             let memory = Arc::new(Memory::open(data_dir.join("mochi.sqlite")).expect("open memory db"));
             let settings = Settings::load(&data_dir);
             app.manage(AppState {
@@ -505,7 +537,8 @@ pub fn run() {
             open_settings,
             link_status,
             pair_answer,
-            forget_device
+            forget_device,
+            log_js
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mochi");

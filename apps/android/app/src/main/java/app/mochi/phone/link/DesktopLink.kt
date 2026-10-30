@@ -23,6 +23,8 @@ data class LinkUi(
     val caption: String? = null,
     val confirmText: String? = null,
     val error: String? = null,
+    /** Last few link events, newest last; shown on the pairing screen for troubleshooting. */
+    val trail: List<String> = emptyList(),
 ) {
     enum class Phase { Disconnected, Connecting, Pairing, WaitingApproval, Connected }
 }
@@ -63,7 +65,8 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
     /** The user tapped Approve on the phone during pairing. */
     fun approvePairing() {
         pairing?.phoneApproved = true
-        send(PhoneMessage.PairApprove)
+        val sent = socket?.send(PhoneMessage.PairApprove.toJson()) ?: false
+        note(if (sent) "→ PairApprove" else "→ PairApprove NOT sent (socket closed)")
         _ui.update { it.copy(phase = LinkUi.Phase.WaitingApproval) }
     }
 
@@ -82,18 +85,27 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
     }
 
     private val listener = object : WebSocketListener() {
+        override fun onOpen(webSocket: WebSocket, response: Response) { note("socket open") }
         override fun onMessage(webSocket: WebSocket, text: String) {
             if (text.length > MAX_FRAME_BYTES) return
-            handle(DesktopMessage.parse(text))
+            val m = try { DesktopMessage.parse(text) } catch (e: Exception) { note("bad frame: ${e.message}"); return }
+            note("← ${m::class.simpleName}")
+            try { handle(m) } catch (e: Exception) { note("handler failed: ${e::class.simpleName}: ${e.message}"); _ui.update { it.copy(error = "${e::class.simpleName}: ${e.message}") } }
         }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            note("failure: ${t.message}")
             _ui.update { it.copy(phase = LinkUi.Phase.Disconnected, error = t.message) }
             scheduleReconnect()
         }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            note("closed $code $reason")
             _ui.update { it.copy(phase = LinkUi.Phase.Disconnected) }
             scheduleReconnect()
         }
+    }
+
+    private fun note(line: String) {
+        _ui.update { it.copy(trail = (it.trail + line).takeLast(8)) }
     }
 
     private fun handle(m: DesktopMessage) {
@@ -119,11 +131,18 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
                 _ui.update { it.copy(phase = LinkUi.Phase.Pairing, desktopName = m.desktopName, pairCode = code) }
             }
             is DesktopMessage.Paired -> {
-                val p = pairing ?: return
-                val dd = d ?: return
-                store.save(Pairing(_ui.value.desktopName, dd.host, dd.port, m.deviceId, p.secret ?: return))
+                // Move on first so the screen never sticks; then persist.
+                val p = pairing
+                val secret = p?.secret
                 pairing = null
-                _ui.update { it.copy(phase = LinkUi.Phase.Connected, pairCode = null, mochi = MochiState.IDLE, caption = "Paired with ${it.desktopName}") }
+                _ui.update { it.copy(phase = LinkUi.Phase.Connected, pairCode = null, mochi = MochiState.IDLE, caption = "Paired with ${it.desktopName}", error = null) }
+                if (secret == null || d == null) { note("paired but no secret/target to save"); return }
+                try {
+                    store.save(Pairing(_ui.value.desktopName, d.host, d.port, m.deviceId, secret))
+                } catch (e: Exception) {
+                    note("save failed: ${e.message}")
+                    _ui.update { it.copy(error = "Paired, but could not save the pairing: ${e.message}") }
+                }
             }
             DesktopMessage.PairDenied -> { pairing = null; _ui.update { it.copy(phase = LinkUi.Phase.Disconnected, pairCode = null, error = "Pairing was not approved on both devices.") }; wantConnected = false }
             DesktopMessage.AuthOk -> _ui.update { it.copy(phase = LinkUi.Phase.Connected, mochi = MochiState.IDLE, error = null) }

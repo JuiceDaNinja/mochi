@@ -33,3 +33,6 @@ input[type=range] { accent-color: #ff8fa3; }
 
 .pair { margin: 8px 0; padding: 12px; border: 1px solid var(--accent); border-radius: 12px; background: #fff5f6; }
 .code { font-size: 32px; font-weight: 800; letter-spacing: 0.12em; margin: 8px 0; color: var(--accent-ink); }
+header { position: relative; }
+.close { position: absolute; right: 0; top: 4px; width: 32px; height: 32px; padding: 0; border-radius: 50%; }
+pre.error { white-space: pre-wrap; background: #fff0f2; color: #a04050; border: 1px solid #f3c2cb; border-radius: 10px; padding: 10px; font-size: 12px; }

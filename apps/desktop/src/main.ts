@@ -8,6 +8,8 @@ import { Sfx, Voice, WebSpeechVoice } from "./mochi/voice";
 
 async function boot() {
   const bridge: Bridge = hasTauri() ? new TauriBridge() : new BrowserBridge();
+  window.addEventListener("error", (e) => void bridge.log(`character window error: ${e.message} @${e.filename}:${e.lineno}`));
+  window.addEventListener("unhandledrejection", (e) => void bridge.log(`character window rejection: ${String((e as PromiseRejectionEvent).reason)}`));
   const stage = document.getElementById("stage")!;
   const initial = await bridge.initialSettings();
   const scale = Number(new URLSearchParams(location.search).get("scale") ?? (bridge.kind === "browser" ? 1.1 : initial?.scale ?? 0.8));
@@ -54,8 +56,13 @@ async function boot() {
     run(model.tick(performance.now()));
     const r = view.bodyRect();
     let box = { x: r.x, y: r.y, w: r.width, h: r.height };
-    if (!menu.el.hidden) {
-      const m = menu.el.getBoundingClientRect();
+    // Anything clickable that hangs above the body must be inside the hit rectangle too:
+    // the menu, the Yes/No buttons, the bubble they sit under.
+    for (const sel of [".menu", ".confirm", ".bubble"]) {
+      const el = view.root.querySelector<HTMLElement>(sel);
+      if (!el || el.hidden) continue;
+      const m = el.getBoundingClientRect();
+      if (m.width === 0) continue;
       const x1 = Math.min(box.x, m.x), y1 = Math.min(box.y, m.y);
       const x2 = Math.max(box.x + box.w, m.x + m.width), y2 = Math.max(box.y + box.h, m.y + m.height);
       box = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
@@ -213,4 +220,4 @@ function devPanel(bridge: BrowserBridge, voice: Voice, model: MochiModel) {
   });
 }
 
-void boot();
+boot().catch((e) => { console.error(e); document.body.insertAdjacentHTML("beforeend", `<pre style="color:#a04050;background:#fff;padding:8px">${String(e)}</pre>`); });
