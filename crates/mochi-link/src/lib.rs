@@ -46,14 +46,17 @@ pub enum LinkError {
     Tls(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LinkConfig {
     /// Shown on the phone while pairing. Defaults to the hostname.
     pub desktop_name: String,
     /// Preferred port; 0 picks a free one. If the preferred port is taken, a free one is used.
     pub port: u16,
-    /// Where paired devices are stored (JSON). The TLS certificate and key live beside it.
+    /// Where paired devices are stored (JSON). The TLS certificate lives beside it.
     pub devices_path: PathBuf,
+    /// Pairing secrets and the TLS private key. `None` picks the platform store
+    /// (Windows Credential Manager) using the folder of `devices_path`.
+    pub secrets: Option<mochi_secrets::SharedSecrets>,
     pub advertise: bool,
     pub ping_interval: Duration,
     pub pairing_timeout: Duration,
@@ -65,6 +68,7 @@ impl Default for LinkConfig {
             desktop_name: hostname::get().map(|h| h.to_string_lossy().to_string()).unwrap_or_else(|_| "Mochi desktop".into()),
             port: DEFAULT_PORT,
             devices_path: PathBuf::from("devices.json"),
+            secrets: None,
             advertise: true,
             ping_interval: Duration::from_secs(PING_INTERVAL_SECS),
             pairing_timeout: Duration::from_secs(90),
@@ -149,15 +153,16 @@ impl Link {
             Err(e) => return Err(e.into()),
         };
         let addr = listener.local_addr()?;
-        let tls_dir = cfg.devices_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
-        let tls = tls::load_or_create(&tls_dir).map_err(LinkError::Tls)?;
+        let data_dir = cfg.devices_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+        let secrets = cfg.secrets.clone().unwrap_or_else(|| mochi_secrets::open_default(&data_dir));
+        let tls = tls::load_or_create(&data_dir, &secrets).map_err(LinkError::Tls)?;
         let fingerprint = tls.fingerprint.clone();
         let acceptor = tls.acceptor;
         let (out, _) = broadcast::channel(64);
         let handle = LinkHandle {
             out,
             pending: Arc::new(Mutex::new(HashMap::new())),
-            devices: Arc::new(DeviceStore::open(&cfg.devices_path)),
+            devices: Arc::new(DeviceStore::open(&cfg.devices_path, secrets)),
             connected: Arc::new(Mutex::new(None)),
         };
         let mdns = if cfg.advertise { advertise(&cfg.desktop_name, addr.port(), &fingerprint).ok() } else { None };
@@ -219,7 +224,7 @@ async fn serve(stream: TlsStream<TcpStream>, _peer: SocketAddr, session: u64, h:
     };
     let device: PairedDevice = match first {
         PhoneMessage::Auth { device_id, hmac_b64 } => {
-            let ok = h.devices.get(&device_id).map_or(false, |d| crypto::verify_auth(&d.secret(), &nonce, &hmac_b64));
+            let ok = h.devices.secret(&device_id).map_or(false, |s| crypto::verify_auth(&s, &nonce, &hmac_b64));
             if !ok {
                 send(&mut ws, &DesktopMessage::AuthFailed).await?;
                 return Err("auth failed".into());
@@ -384,7 +389,7 @@ mod tests {
         let dir = tempfile_path::Path::new();
         let (tx, rx) = mpsc::channel(32);
         let link = Link::start(
-            LinkConfig { desktop_name: "DESK".into(), port: 0, devices_path: dir.join("devices.json"), advertise: false, ping_interval: ping, pairing_timeout: Duration::from_secs(5) },
+            LinkConfig { desktop_name: "DESK".into(), port: 0, devices_path: dir.join("devices.json"), secrets: Some(Arc::new(mochi_secrets::MemoryStore::default())), advertise: false, ping_interval: ping, pairing_timeout: Duration::from_secs(5) },
             tx,
         )
         .await

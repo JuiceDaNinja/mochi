@@ -1,11 +1,14 @@
-//! TLS for the phone link: one self-signed certificate per desktop, generated on first run
-//! and kept next to `devices.json`. The phone has no CA to check against, so it pins the
+//! TLS for the phone link: one self-signed certificate per desktop, generated on first run.
+//! The certificate (public) is kept next to `devices.json` as `link-cert.pem`; the private
+//! key lives in the platform secret store (Windows Credential Manager) as PEM. A
+//! `link-key.pem` written by 0.1.14 is moved into the store and deleted on first start. The phone has no CA to check against, so it pins the
 //! certificate instead: the SHA-256 fingerprint of the DER certificate is mixed into the
 //! 6-digit pairing code (so a man-in-the-middle during pairing shows different codes on the
 //! two screens) and stored on the phone when pairing succeeds; every later connection must
 //! present the same certificate.
 
 use base64::Engine;
+use mochi_secrets::{keys, SharedSecrets};
 use rustls_pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -17,18 +20,34 @@ pub struct LinkTls {
     pub fingerprint: String,
 }
 
-/// Load the desktop certificate from `dir`, generating it the first time.
-pub fn load_or_create(dir: &Path) -> Result<LinkTls, String> {
+/// Load the desktop certificate from `dir` and its key from `secrets`, generating both the first time.
+pub fn load_or_create(dir: &Path, secrets: &SharedSecrets) -> Result<LinkTls, String> {
     let cert_path = dir.join("link-cert.pem");
-    let key_path = dir.join("link-key.pem");
-    if !cert_path.exists() || !key_path.exists() {
-        let cert = rcgen::generate_simple_self_signed(vec!["mochi.local".to_string()]).map_err(|e| format!("make certificate: {e}"))?;
-        std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-        std::fs::write(&cert_path, cert.cert.pem()).map_err(|e| format!("write certificate: {e}"))?;
-        std::fs::write(&key_path, cert.signing_key.serialize_pem()).map_err(|e| format!("write key: {e}"))?;
+    let legacy_key_path = dir.join("link-key.pem");
+
+    // 0.1.14 kept the key beside the certificate: move it into the store.
+    if legacy_key_path.exists() && secrets.get(keys::LINK_TLS_KEY)?.is_none() {
+        let pem = std::fs::read_to_string(&legacy_key_path).map_err(|e| format!("read legacy key: {e}"))?;
+        secrets.set(keys::LINK_TLS_KEY, &pem)?;
     }
+    if legacy_key_path.exists() && secrets.get(keys::LINK_TLS_KEY)?.is_some() {
+        let _ = std::fs::remove_file(&legacy_key_path);
+    }
+
+    let key_pem = match secrets.get(keys::LINK_TLS_KEY)? {
+        Some(pem) if cert_path.exists() => pem,
+        _ => {
+            // No usable pair: make a fresh certificate (phones will have to pair again).
+            let cert = rcgen::generate_simple_self_signed(vec!["mochi.local".to_string()]).map_err(|e| format!("make certificate: {e}"))?;
+            std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+            let pem = cert.signing_key.serialize_pem();
+            secrets.set(keys::LINK_TLS_KEY, &pem)?;
+            std::fs::write(&cert_path, cert.cert.pem()).map_err(|e| format!("write certificate: {e}"))?;
+            pem
+        }
+    };
     let cert = CertificateDer::from(pem_body(&std::fs::read_to_string(&cert_path).map_err(|e| format!("read certificate: {e}"))?)?);
-    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(pem_body(&std::fs::read_to_string(&key_path).map_err(|e| format!("read key: {e}"))?)?));
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(pem_body(&key_pem)?));
     let fingerprint = fingerprint(&cert);
     // Name the provider explicitly: other crates in the workspace (reqwest) enable rustls's
     // aws-lc-rs backend too, and with two providers compiled in `builder()` cannot pick one.
@@ -68,13 +87,39 @@ fn hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    fn tmp_dir() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("mochi-tls-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()))
+    }
+
     #[test]
     fn certificate_is_created_once_and_reloaded() {
-        let dir = std::env::temp_dir().join(format!("mochi-tls-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        let a = load_or_create(&dir).unwrap();
-        let b = load_or_create(&dir).unwrap();
+        let dir = tmp_dir();
+        let secrets: SharedSecrets = Arc::new(mochi_secrets::MemoryStore::default());
+        let a = load_or_create(&dir, &secrets).unwrap();
+        let b = load_or_create(&dir, &secrets).unwrap();
         assert_eq!(a.fingerprint, b.fingerprint, "second load reuses the stored certificate");
         assert_eq!(a.fingerprint.len(), 64);
+        assert!(!dir.join("link-key.pem").exists(), "private key is not written to disk");
+        assert!(secrets.get(keys::LINK_TLS_KEY).unwrap().unwrap().contains("PRIVATE KEY"));
+        // Losing the key (e.g. a new user profile) makes a fresh certificate rather than failing.
+        let fresh: SharedSecrets = Arc::new(mochi_secrets::MemoryStore::default());
+        let c = load_or_create(&dir, &fresh).unwrap();
+        assert_ne!(c.fingerprint, a.fingerprint);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn legacy_key_file_is_moved_into_the_store() {
+        let dir = tmp_dir();
+        let first: SharedSecrets = Arc::new(mochi_secrets::MemoryStore::default());
+        let a = load_or_create(&dir, &first).unwrap();
+        // Recreate the 0.1.14 layout: key beside the certificate, nothing in the store.
+        std::fs::write(dir.join("link-key.pem"), first.get(keys::LINK_TLS_KEY).unwrap().unwrap()).unwrap();
+        let second: SharedSecrets = Arc::new(mochi_secrets::MemoryStore::default());
+        let b = load_or_create(&dir, &second).unwrap();
+        assert_eq!(a.fingerprint, b.fingerprint, "same certificate, so phones stay paired");
+        assert!(!dir.join("link-key.pem").exists(), "legacy key file removed");
+        assert!(second.get(keys::LINK_TLS_KEY).unwrap().is_some());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
