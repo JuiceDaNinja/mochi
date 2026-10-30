@@ -16,7 +16,7 @@ members = [
 default-members = ["crates/mochi-core", "crates/mochi-brain-mock", "crates/mochi-brain-claude", "crates/mochi-brain-local", "crates/mochi-brain-codex", "crates/mochi-platform-windows", "crates/mochi-link", "crates/mochi-secrets"]
 
 [workspace.package]
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 license = "MIT"
 
