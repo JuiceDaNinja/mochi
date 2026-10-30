@@ -6,7 +6,7 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * Byte-for-byte the same scheme as crates/mochi-link/src/crypto.rs:
- *  - pairing: X25519; secret = X25519(myPrivate, theirPublic); code = pairingCode(secret)
+ *  - pairing: X25519; secret = X25519(myPrivate, theirPublic); code = pairingCode(secret, certFingerprint)
  *  - auth:    base64(HMAC-SHA256(secret, rawNonce))
  */
 object Crypto {
@@ -22,10 +22,15 @@ object Crypto {
         return b64(mac.doFinal(unb64(nonceB64)))
     }
 
-    /** Six digits from the shared secret; FNV-1a 64 then mod 1e6, identical to the desktop. */
-    fun pairingCode(secret: ByteArray): String {
+    /** Six digits from the shared secret followed by the desktop certificate's fingerprint
+     *  (hex text), as in crates/mochi-link/src/tls.rs; FNV-1a 64 then mod 1e6. */
+    fun pairingCode(secret: ByteArray, certFingerprint: String): String =
+        pairingCode(secret + certFingerprint.toByteArray(Charsets.US_ASCII))
+
+    /** FNV-1a 64 then mod 1e6, identical to mochi-core `pairing_code`. */
+    fun pairingCode(input: ByteArray): String {
         var h = 0xcbf29ce484222325uL
-        for (b in secret) {
+        for (b in input) {
             h = h xor (b.toUByte().toULong())
             h *= 0x100000001b3uL
         }

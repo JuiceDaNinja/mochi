@@ -15,7 +15,7 @@ mochi/
 │  ├─ mochi-brain-codex/       OpenAI Codex CLI adapter (codex exec --json, AGENTS.md instructions, resumed thread per task).
 │  ├─ mochi-brain-mock/        Scripted scenarios + fake desktop for demos and tests.
 │  ├─ mochi-platform-windows/  UI Automation tree + GDI screenshot (Perception), SendInput (Actuator). Stubs elsewhere.
-│  └─ mochi-link/              Phone link: WebSocket server, mDNS, X25519 pairing with a 6-digit code on both screens, HMAC auth, keepalive.
+│  └─ mochi-link/              Phone link: TLS WebSocket server (self-signed cert, pinned by the phone), mDNS, X25519 pairing with a 6-digit code on both screens, HMAC auth, keepalive.
 └─ apps/
    ├─ android/           Kotlin + Compose. Finds the desktop, pairs, talks, mirrors Mochi's face, Yes/No.
    └─ desktop/           Tauri 2 + Vite/TypeScript. The character window.
@@ -106,7 +106,7 @@ pnpm test               # vitest (state machine) + cargo test (gate, memory, eng
 
 ## Phase 4 checklist (hardening)
 
-- [ ] TLS on the phone link (self-signed cert pinned at pairing) — today the LAN WebSocket is cleartext with HMAC auth; the shared secret itself never crosses the wire.
+- [x] TLS on the phone link — `wss://` with a self-signed certificate generated on first run (`link-cert.pem` / `link-key.pem` beside `devices.json`). The phone pins its SHA-256 fingerprint at pairing, and the fingerprint is mixed into the 6-digit code so a man-in-the-middle during pairing shows two different codes. Phones paired before this must pair again once.
 - [ ] Move the pairing secret and API keys into Windows Credential Manager (desktop) — the phone side already uses EncryptedSharedPreferences.
 - [ ] Hosted TTS proxy in the connector (`/tts`) and the anime voice; Rive assets for both faces; Porcupine wake word.
 - [ ] Per-app allow list UI (the memory already has `app_setting.allowed`), global hotkey for the emergency stop.

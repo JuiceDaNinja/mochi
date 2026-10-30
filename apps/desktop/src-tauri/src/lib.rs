@@ -60,11 +60,15 @@ struct AppState {
     scale: Mutex<f64>,
     link: Mutex<Option<LinkHandle>>,
     link_port: Mutex<Option<u16>>,
+    /// SHA-256 of the link's TLS certificate (hex); the phone pins it at pairing.
+    link_fingerprint: Mutex<Option<String>>,
 }
 
 #[derive(Serialize, Clone)]
 struct LinkStatus {
     port: Option<u16>,
+    /// Short form of the certificate fingerprint, for the Settings panel.
+    fingerprint: Option<String>,
     desktop_name: String,
     connected: Option<String>,
     devices: Vec<mochi_link::PairedDevice>,
@@ -341,6 +345,7 @@ fn link_status(state: State<'_, AppState>) -> LinkStatus {
     let link = state.link.lock().unwrap().clone();
     LinkStatus {
         port: *state.link_port.lock().unwrap(),
+        fingerprint: state.link_fingerprint.lock().unwrap().as_ref().map(|f| f.chars().take(16).collect()),
         desktop_name: hostname::get().map(|h| h.to_string_lossy().to_string()).unwrap_or_else(|_| "Mochi desktop".into()),
         connected: link.as_ref().and_then(|l| l.connected()).map(|c| c.1),
         devices: link.as_ref().map(|l| l.devices()).unwrap_or_default(),
@@ -387,11 +392,12 @@ fn spawn_link(app: AppHandle, data_dir: PathBuf) {
             Ok(l) => l,
             Err(e) => { log(&format!("phone link not started: {e}")); return; }
         };
-        log(&format!("phone link listening on port {}", link.addr.port()));
+        log(&format!("phone link listening on port {} (tls, cert {})", link.addr.port(), link.fingerprint));
         {
             let st = app.state::<AppState>();
             *st.link.lock().unwrap() = Some(link.handle.clone());
             *st.link_port.lock().unwrap() = Some(link.addr.port());
+            *st.link_fingerprint.lock().unwrap() = Some(link.fingerprint.clone());
         }
         let _keep = link._mdns_keepalive();
         while let Some(ev) = rx.recv().await {
@@ -597,6 +603,7 @@ pub fn run() {
                 scale: Mutex::new(1.0),
                 link: Mutex::new(None),
                 link_port: Mutex::new(None),
+                link_fingerprint: Mutex::new(None),
             });
             spawn_link(app.handle().clone(), app.path().app_data_dir().expect("app data dir"));
 

@@ -10,6 +10,8 @@ class CryptoTest {
         val secret = ByteArray(32) { it.toByte() }
         assertEquals("628869", Crypto.pairingCode(secret))
         assertEquals("764634", Crypto.pairingCode("nonce-1".toByteArray()))
+        // With the pinned certificate mixed in (crates/mochi-link/src/tls.rs `pairing_code_known_vector`).
+        assertEquals("299141", Crypto.pairingCode(secret, "ab".repeat(32)))
     }
 
     @Test
@@ -17,6 +19,12 @@ class CryptoTest {
         val secret = ByteArray(32) { it.toByte() }
         val nonceB64 = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
         assertEquals("rfyvxWCEWzSmagrgM60fx7Q2Y1SIVuS+PMngHB5uEAA=", Crypto.authHmac(secret, nonceB64))
+    }
+
+    @Test
+    fun fingerprintIsLowercaseSha256Hex() {
+        // SHA-256 of the empty string, the textbook vector.
+        assertEquals("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", PinnedTrust.fingerprint(ByteArray(0)))
     }
 
     @Test

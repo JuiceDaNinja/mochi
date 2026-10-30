@@ -15,7 +15,7 @@ type Settings = {
 };
 type LearnedTarget = { id: number; app_id: string; user_phrase: string; ax_label: string | null; hits: number; misses: number };
 type Probe = { ok: boolean; detail: string };
-type LinkStatus = { port: number | null; desktop_name: string; connected: string | null; devices: { device_id: string; name: string; paired_at: string }[] };
+type LinkStatus = { port: number | null; fingerprint: string | null; desktop_name: string; connected: string | null; devices: { device_id: string; name: string; paired_at: string }[] };
 type PairRequest = { session: number; device_name: string; code: string };
 
 const DEFAULTS: Settings = {
@@ -70,7 +70,7 @@ function browserApi() {
       targets: async () => [{ id: 1, app_id: "chrome.exe", user_phrase: "the reply button", ax_label: "Reply", hits: 3, misses: 0 }],
       forget: async () => {},
       wipe: async () => {},
-      link: async (): Promise<LinkStatus> => ({ port: 51234, desktop_name: "DESKTOP-MOCHI", connected: null, devices: [{ device_id: "ab12", name: "Pixel 9", paired_at: "2026-10-30" }] }),
+      link: async (): Promise<LinkStatus> => ({ port: 51234, fingerprint: "3f9a1c77b2e04d5a", desktop_name: "DESKTOP-MOCHI", connected: null, devices: [{ device_id: "ab12", name: "Pixel 9", paired_at: "2026-10-30" }] }),
       pairAnswer: async () => {},
       forgetDevice: async () => {},
       onPair: async (cb: (r: PairRequest) => void) => { (window as any).fakePairRequest = () => cb({ session: 1, device_name: "Pixel 9", code: "482913" }); },
@@ -248,7 +248,7 @@ async function render() {
 
   const fillLink = async () => {
     const st = await api.link();
-    const addr = st.port ? `this computer is “${st.desktop_name}”, port ${st.port}` : "phone link is not running";
+    const addr = st.port ? `this computer is “${st.desktop_name}”, port ${st.port}${st.fingerprint ? `, encrypted (cert ${st.fingerprint}…)` : ""}` : "phone link is not running";
     $("#link-line").textContent = st.connected ? `Connected to ${st.connected} — ${addr}.` : `No phone connected — ${addr}.`;
     const tb = $("#devices tbody");
     tb.replaceChildren(
