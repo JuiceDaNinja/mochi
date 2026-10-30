@@ -360,6 +360,19 @@ fn forget_device(state: State<'_, AppState>, device_id: String) {
     }
 }
 
+/// Close Mochi for real: stop any task, tell the phone, then exit.
+#[tauri::command]
+async fn quit_app(app: AppHandle) {
+    log("quit requested");
+    {
+        let st = app.state::<AppState>();
+        if let Some(h) = st.engine.lock().unwrap().as_ref() { h.cancel(); }
+        if let Some(l) = st.link.lock().unwrap().as_ref() { l.send(DesktopMessage::Sleepy); }
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    app.exit(0);
+}
+
 /// Start the WebSocket server and route phone events into the app.
 fn spawn_link(app: AppHandle, data_dir: PathBuf) {
     tauri::async_runtime::spawn(async move {
@@ -566,7 +579,10 @@ pub fn run() {
             let _ = LOG_PATH.set(data_dir.join("mochi.log"));
             log(&format!("Mochi {} starting; data dir {}", env!("CARGO_PKG_VERSION"), data_dir.display()));
             let memory = Arc::new(Memory::open(data_dir.join("mochi.sqlite")).expect("open memory db"));
-            let settings = Settings::load(&data_dir);
+            let mut settings = Settings::load(&data_dir);
+            if settings.brain == BrainKind::Mock {
+                settings.brain = BrainKind::ClaudeCode; // the demo brain is no longer offered in the UI
+            }
             app.manage(AppState {
                 data_dir,
                 settings: Mutex::new(settings),
@@ -613,7 +629,8 @@ pub fn run() {
             link_status,
             pair_answer,
             forget_device,
-            log_js
+            log_js,
+            quit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mochi");

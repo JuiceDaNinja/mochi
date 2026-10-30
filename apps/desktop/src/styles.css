@@ -165,6 +165,7 @@ body.dev { background: linear-gradient(180deg, #e9eef5 0%, #d7dfe9 100%); }
 .menu button, .menu label { font: inherit; text-align: left; padding: 6px 10px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; display: flex; gap: 8px; align-items: center; }
 .menu button:hover, .menu label:hover { background: #f6ebe1; }
 .menu button[data-x="stop"] { color: #a04050; }
+.menu button[data-x="quit"] { color: #8a7a6f; border-top: 1px solid #f0e6dc; border-radius: 0 0 8px 8px; margin-top: 2px; }
 .menu .menu-sep { font-size: 11px; color: #9a8a7f; text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 10px 2px; border-top: 1px solid #f0e6dc; margin-top: 2px; }
 .menu .menu-sep:empty { padding: 0; margin-top: 4px; }
 .menu form.ask { display: flex; gap: 6px; padding: 2px; }

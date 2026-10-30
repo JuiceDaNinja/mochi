@@ -165,14 +165,11 @@ function buildMenu(bridge: Bridge, voice: Voice, model: MochiModel, openSettings
   el.hidden = true;
   el.innerHTML = `
     <form class="ask"><input type="text" placeholder="Ask Mochi…" aria-label="Ask Mochi" autocomplete="off"><button type="submit">Go</button></form>
-    <div class="menu-sep">Demos</div>
-    <button data-s="gmail">Reply to Sara</button>
-    <button data-s="gmail_lost">Same, but I get lost</button>
-    <button data-s="close_unsaved">Close an unsaved note</button>
     <div class="menu-sep"></div>
     <label><input type="checkbox" id="menu-narr" checked> Talk while working</label>
     <button data-x="settings">Settings…</button>
-    <button data-x="stop">Stop</button>`;
+    <button data-x="stop">Stop</button>
+    <button data-x="quit">Quit Mochi</button>`;
   const close = () => { el.hidden = true; };
   const form = el.querySelector<HTMLFormElement>("form.ask")!;
   const input = form.querySelector("input")!;
@@ -184,9 +181,7 @@ function buildMenu(bridge: Bridge, voice: Voice, model: MochiModel, openSettings
     close();
     void bridge.startTask(task);
   });
-  el.querySelectorAll<HTMLButtonElement>("button[data-s]").forEach((b) =>
-    b.addEventListener("click", () => { close(); void bridge.startTask("demo", b.dataset.s!); }),
-  );
+  el.querySelector<HTMLButtonElement>('button[data-x="quit"]')!.addEventListener("click", () => { close(); void bridge.quit(); });
   el.querySelector<HTMLButtonElement>('button[data-x="settings"]')!.addEventListener("click", () => { close(); openSettings(); });
   el.querySelector<HTMLButtonElement>('button[data-x="stop"]')!.addEventListener("click", () => { close(); void bridge.cancel(); });
   el.querySelector<HTMLInputElement>("#menu-narr")!.addEventListener("change", (e) => {

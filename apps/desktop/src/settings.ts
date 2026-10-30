@@ -56,6 +56,7 @@ async function makeApi() {
         onLink: async (cb: () => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen("mochi://link", () => cb()); },
         close: async () => { onClose?.(); },
         log: (line: string) => invoke<void>("log_js", { line }).catch(() => {}),
+        quit: () => invoke<void>("quit_app"),
       };
 }
 function browserApi() {
@@ -75,6 +76,7 @@ function browserApi() {
       onLink: async () => {},
       close: async () => { onClose?.(); },
       log: async (line: string) => console.log(line),
+      quit: async () => {},
     };
 }
 type Api = Awaited<ReturnType<typeof makeApi>>;
@@ -106,7 +108,6 @@ async function render() {
           <label class="choice"><input type="radio" name="brain" value="claude_code"><div><b>Claude Code</b><span>Uses the Claude Code CLI you are signed into. Best results; sees screenshots.</span></div></label>
           <label class="choice"><input type="radio" name="brain" value="codex"><div><b>Codex CLI</b><span>OpenAI's Codex CLI, signed in with your ChatGPT account or an OpenAI key.</span></div></label>
           <label class="choice"><input type="radio" name="brain" value="local"><div><b>Local AI</b><span>Any OpenAI-compatible server on your network (Ollama, LM Studio, llama.cpp).</span></div></label>
-          <label class="choice"><input type="radio" name="brain" value="mock"><div><b>Demo</b><span>Scripted Gmail reply on a pretend screen. Nothing on your PC is touched.</span></div></label>
         </div>
         <div id="brain-claude" class="sub">
           <label>Command <input id="claude-binary" type="text"></label>
@@ -150,7 +151,7 @@ async function render() {
         <div class="row"><button id="wipe" class="danger">Forget everything</button></div>
       </section>
 
-      <footer><button id="save" class="primary">Save</button><span id="saved" class="hint"></span></footer>
+      <footer><button id="save" class="primary">Save</button><span id="saved" class="hint"></span><span style="flex:1"></span><button id="quit" class="danger">Quit Mochi</button></footer>
     </div>`),
   );
 
@@ -203,6 +204,7 @@ async function render() {
     setTimeout(() => ($("#saved").textContent = ""), 1500);
   };
   $("#save").addEventListener("click", () => void save());
+  $("#quit").addEventListener("click", () => void api.quit());
   $("#probe").addEventListener("click", async () => {
     await save();
     $("#probe-result").textContent = "Testing…";
