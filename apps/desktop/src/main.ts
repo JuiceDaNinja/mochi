@@ -4,7 +4,7 @@ import { MochiModel, Effect } from "./mochi/model";
 import { Mover, gazeToward } from "./mochi/motion";
 import { loadRiveView } from "./mochi/rive";
 import { MochiView, SvgMochiView } from "./mochi/view";
-import { Sfx, Voice, WebSpeechVoice } from "./mochi/voice";
+import { HostedTtsVoice, Sfx, Voice, WebSpeechVoice } from "./mochi/voice";
 import { mountSettings, refreshSettings } from "./settings";
 import "./settings.css";
 
@@ -18,7 +18,10 @@ async function boot() {
 
   const view: MochiView = (await loadRiveView(stage)) ?? new SvgMochiView(stage, scale);
   const model = new MochiModel();
-  const voice: Voice = new WebSpeechVoice();
+  // Mochi's own voice runs locally (Kokoro sidecar); the Windows voice covers the first-run
+  // model download and builds without the sidecar.
+  const voiceEndpoint = await bridge.voiceEndpoint();
+  const voice: Voice = voiceEndpoint ? new HostedTtsVoice(`${voiceEndpoint}/tts`, new WebSpeechVoice()) : new WebSpeechVoice();
   const sfx = new Sfx();
   const mon = await bridge.monitor();
 

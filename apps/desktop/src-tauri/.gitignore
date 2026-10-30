@@ -1,2 +1,5 @@
 target
 gen/schemas
+# PyInstaller output of tts/build.ps1 (bundled by CI)
+binaries/mochi-tts/*
+!binaries/mochi-tts/.gitkeep

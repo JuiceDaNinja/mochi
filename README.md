@@ -103,13 +103,14 @@ pnpm test               # vitest (state machine) + cargo test (gate, memory, eng
 | Phone link (desktop) | Real; tested end to end in-process (pair with both approvals, talk both ways, HMAC reconnect, denial, missed pings) |
 | Android app | Real code, **not compiled here** (no Android SDK in this environment); protocol/crypto have JVM unit tests with vectors from the Rust side |
 | Rive animation | Integration point in `rive.ts`; SVG character is used until `public/mochi.riv` exists (inputs documented in that file) |
-| Voice | Windows speech voices in dev; hosted TTS adapter ready, no key yet |
+| Voice | **Local Kokoro TTS sidecar** (`tts/`, voice `af_jessica`), model downloaded on first run; Windows voice as fallback |
 
 ## Phase 4 checklist (hardening)
 
 - [x] TLS on the phone link — `wss://` with a self-signed certificate generated on first run (`link-cert.pem` beside `devices.json`; the private key is in the secret store). The phone pins its SHA-256 fingerprint at pairing, and the fingerprint is mixed into the 6-digit code so a man-in-the-middle during pairing shows two different codes. Phones paired before this must pair again once.
 - [x] Secrets in Windows Credential Manager (desktop) — `crates/mochi-secrets`: the phone pairing secret (`Mochi/phone-secret/<id>`), the local-AI API key (`Mochi/local-api-key`) and the link's TLS private key (`Mochi/link-tls-key`) are generic credentials; `devices.json` and `settings.json` no longer contain them, and values found inline in older files are moved over on first start. macOS uses the Keychain; other platforms fall back to an owner-only `secrets.json`. The phone side already uses EncryptedSharedPreferences.
-- [ ] Hosted TTS proxy in the connector (`/tts`) and the anime voice; Rive assets for both faces; Porcupine wake word.
+- [x] Mochi's own voice — decided against any hosted TTS (privacy): `tts/mochi_tts.py` runs Kokoro on the CPU as a sidecar the app starts, serving `POST /tts` on localhost; nothing leaves the PC. Model files (~350 MB) download once from the kokoro-onnx GitHub release with pinned SHA-256; the Windows voice fills in until then. Built with PyInstaller on CI (`tts/build.ps1`).
+- [ ] Rive assets for both faces; Porcupine wake word.
 - [ ] Per-app allow list UI (the memory already has `app_setting.allowed`), global hotkey for the emergency stop.
 - [ ] macOS + iOS, Codex CLI adapter, pixel-fallback perception for apps with no accessibility tree.
 
