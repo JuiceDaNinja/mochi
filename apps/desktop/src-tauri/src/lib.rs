@@ -12,6 +12,8 @@ use mochi_brain_mock::{FakeDesktop, MockBrain};
 use mochi_core::engine::EngineConfig;
 use mochi_core::protocol::DesktopMessage;
 use mochi_core::*;
+// mochi_core exports its own `Result<T>` alias; Tauri commands need the std one.
+use std::result::Result;
 use mochi_link::{Link, LinkConfig, LinkEvent, LinkHandle};
 use mochi_platform_windows::WindowsDesktop;
 use serde::{Deserialize, Serialize};

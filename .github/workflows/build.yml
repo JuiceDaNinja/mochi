@@ -49,7 +49,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NAME: windows-${{ github.run_number }}
         run: |
-          { grep -nE "error(\[E[0-9]+\])?:|^e: |error TS|What went wrong|FAILURE|Caused by|panicked|cannot find|unresolved|mismatched|expected|npm ERR|ELIFECYCLE" build.log | head -300; echo; echo "----- tail -----"; tail -120 build.log; } > errors.txt || true
+          { grep -nE -A8 "error(\[E[0-9]+\])?:|^e: |error TS|What went wrong|FAILURE|Caused by|panicked" build.log | head -600; echo; echo "----- tail -----"; tail -120 build.log; } > errors.txt || true
           R="$GITHUB_REPOSITORY"
           if ! gh api "repos/$R/git/refs/heads/ci-logs" >/dev/null 2>&1; then
             MAIN=$(gh api "repos/$R/git/refs/heads/main" --jq .object.sha)
@@ -94,7 +94,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NAME: android-${{ github.run_number }}
         run: |
-          { grep -nE "error(\[E[0-9]+\])?:|^e: |error TS|What went wrong|FAILURE|Caused by|panicked|cannot find|unresolved|mismatched|expected|npm ERR|ELIFECYCLE" build.log | head -300; echo; echo "----- tail -----"; tail -120 build.log; } > errors.txt || true
+          { grep -nE -A8 "error(\[E[0-9]+\])?:|^e: |error TS|What went wrong|FAILURE|Caused by|panicked" build.log | head -600; echo; echo "----- tail -----"; tail -120 build.log; } > errors.txt || true
           R="$GITHUB_REPOSITORY"
           if ! gh api "repos/$R/git/refs/heads/ci-logs" >/dev/null 2>&1; then
             MAIN=$(gh api "repos/$R/git/refs/heads/main" --jq .object.sha)
