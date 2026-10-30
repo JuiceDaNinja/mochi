@@ -1,0 +1,122 @@
+
+----- tail -----
+24852 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_simplified_layernorm'
+24856 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_skip_group_norm'
+24862 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_skiplayernorm'
+24868 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_transpose'
+24872 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_utils'
+24880 INFO: Analyzing hidden import 'onnxruntime.transformers.huggingface_models'
+24882 INFO: Analyzing hidden import 'onnxruntime.transformers.import_utils'
+24884 INFO: Analyzing hidden import 'onnxruntime.transformers.io_binding_helper'
+24898 INFO: Analyzing hidden import 'onnxruntime.transformers.large_model_exporter'
+24910 INFO: Analyzing hidden import 'onnxruntime.transformers.metrics'
+24915 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_exporter'
+24933 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model'
+24977 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_bart'
+24983 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_bert'
+24996 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_bert_keras'
+25009 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_bert_tf'
+25022 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_clip'
+25024 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_conformer'
+25026 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_gpt2'
+25028 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_mmdit'
+25032 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_phi'
+25056 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_sam2'
+25060 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_t5'
+25082 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_tnlr'
+25087 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_unet'
+25093 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_vae'
+25097 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_utils'
+25097 INFO: Analyzing hidden import 'onnxruntime.transformers.optimizer'
+25109 INFO: Analyzing hidden import 'onnxruntime.transformers.past_helper'
+25115 INFO: Analyzing hidden import 'onnxruntime.transformers.profile_result_processor'
+25123 INFO: Analyzing hidden import 'onnxruntime.transformers.profiler'
+25131 INFO: Analyzing hidden import 'onnxruntime.transformers.quantize_helper'
+25565 INFO: Analyzing hidden import 'onnxruntime.transformers.shape_infer_helper'
+25569 INFO: Analyzing hidden import 'onnxruntime.transformers.shape_optimizer'
+25579 INFO: Analyzing hidden import 'onnxruntime.transformers.torch_onnx_export_helper'
+25581 INFO: Processing module hooks (post-graph stage)...
+25781 INFO: Performing binary vs. data reclassification (750 entries)
+25816 INFO: Looking for ctypes DLLs
+25854 WARNING: Library mbrola.dll required via ctypes not found
+25861 WARNING: Library _handle.dll required via ctypes not found
+25862 WARNING: Library _name.dll required via ctypes not found
+25876 INFO: Analyzing run-time hooks ...
+25880 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+25882 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+25884 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+25910 INFO: Creating base_library.zip...
+25925 INFO: Looking for dynamic libraries
+26408 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\site-packages\\numpy.libs']
+26408 INFO: Extra DLL search directories (PATH): []
+30197 INFO: Warnings written to D:\a\mochi\mochi\build\pyinstaller\mochi-tts\warn-mochi-tts.txt
+30253 INFO: Graph cross-reference written to D:\a\mochi\mochi\build\pyinstaller\mochi-tts\xref-mochi-tts.html
+30300 INFO: checking PYZ
+30300 INFO: Building PYZ because PYZ-00.toc is non existent
+30300 INFO: Building PYZ (ZlibArchive) D:\a\mochi\mochi\build\pyinstaller\mochi-tts\PYZ-00.pyz
+30853 INFO: Building PYZ (ZlibArchive) D:\a\mochi\mochi\build\pyinstaller\mochi-tts\PYZ-00.pyz completed successfully.
+30870 INFO: checking PKG
+30870 INFO: Building PKG because PKG-00.toc is non existent
+30870 INFO: Building PKG (CArchive) mochi-tts.pkg
+30888 INFO: Building PKG (CArchive) mochi-tts.pkg completed successfully.
+30890 INFO: Bootloader C:\hostedtoolcache\windows\Python\3.12.10\x64\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+30890 INFO: checking EXE
+30890 INFO: Building EXE because EXE-00.toc is non existent
+30890 INFO: Building EXE from EXE-00.toc
+30890 INFO: Copying bootloader EXE to D:\a\mochi\mochi\build\pyinstaller\mochi-tts\mochi-tts.exe
+30892 INFO: Copying icon to EXE
+30894 INFO: Copying 0 resources to EXE
+30894 INFO: Embedding manifest in EXE
+30896 INFO: Appending PKG archive to EXE
+30898 INFO: Fixing EXE headers
+30959 INFO: Building EXE from EXE-00.toc completed successfully.
+30966 INFO: checking COLLECT
+30966 INFO: Building COLLECT because COLLECT-00.toc is non existent
+30966 INFO: Removing dir D:\a\mochi\mochi\apps\desktop\src-tauri\binaries\mochi-tts
+30967 INFO: Building COLLECT COLLECT-00.toc
+32240 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+32254 INFO: Build complete! The results are available in: D:\a\mochi\mochi\apps\desktop\src-tauri\binaries
+sidecar size: 6 MB
+
+> @mochi/desktop@0.1.16 tauri D:\a\mochi\mochi\apps\desktop
+> tauri "build"
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `pnpm build`
+
+> @mochi/desktop@0.1.16 build D:\a\mochi\mochi\apps\desktop
+> tsc --noEmit && vite build
+
+[36mvite v7.3.7 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 22 modules transformed.
+rendering chunks...
+[33m[plugin vite:reporter] 
+(!) D:/a/mochi/mochi/node_modules/.pnpm/@tauri-apps+api@2.12.4/node_modules/@tauri-apps/api/core.js is dynamically imported by D:/a/mochi/mochi/apps/desktop/src/settings.ts but also statically imported by D:/a/mochi/mochi/apps/desktop/src/mochi/bridge.ts, D:/a/mochi/mochi/node_modules/.pnpm/@tauri-apps+api@2.12.4/node_modules/@tauri-apps/api/event.js, dynamic import will not move module into another chunk.
+[39m
+[33m[plugin vite:reporter] 
+(!) D:/a/mochi/mochi/node_modules/.pnpm/@tauri-apps+api@2.12.4/node_modules/@tauri-apps/api/event.js is dynamically imported by D:/a/mochi/mochi/apps/desktop/src/settings.ts, D:/a/mochi/mochi/apps/desktop/src/settings.ts, D:/a/mochi/mochi/apps/desktop/src/settings.ts but also statically imported by D:/a/mochi/mochi/apps/desktop/src/mochi/bridge.ts, dynamic import will not move module into another chunk.
+[39m
+computing gzip size...
+[2mdist/[22m[32msettings.html                 [39m[1m[2m  0.46 kB[22m[1m[22m[2m │ gzip:  0.29 kB[22m
+[2mdist/[22m[32mindex.html                    [39m[1m[2m  0.56 kB[22m[1m[22m[2m │ gzip:  0.31 kB[22m
+[2mdist/[22m[35massets/settings-lNlqcOfN.css  [39m[1m[2m  3.57 kB[22m[1m[22m[2m │ gzip:  1.12 kB[22m
+[2mdist/[22m[35massets/index-CGk2k9Ir.css     [39m[1m[2m  9.60 kB[22m[1m[22m[2m │ gzip:  2.77 kB[22m
+[2mdist/[22m[36massets/settings-BMx-P1JM.js   [39m[1m[2m 20.74 kB[22m[1m[22m[2m │ gzip:  7.24 kB[22m
+[2mdist/[22m[36massets/index-BN6BPk2w.js      [39m[1m[2m 22.72 kB[22m[1m[22m[2m │ gzip:  7.88 kB[22m
+[2mdist/[22m[36massets/rive-BgdT-kaV.js       [39m[1m[2m355.90 kB[22m[1m[22m[2m │ gzip: 91.69 kB[22m
+[32m✓ built in 1.56s[39m
+[1m[92m    Updating[0m crates.io index
+[1m[91merror[0m: failed to select a version for the requirement `find-msvc-tools = "^0.1.15"` (locked to 0.1.16)
+candidate versions found which didn't match: 0.1.15, 0.1.14, 0.1.13, ...
+location searched: crates.io index
+required by package `cc v1.10.0`
+    ... which satisfies dependency `cc = "^1.2.27"` (locked to 1.10.0) of package `libsqlite3-sys v0.39.1`
+    ... which satisfies dependency `libsqlite3-sys = "^0.39.0"` (locked to 0.39.1) of package `rusqlite v0.41.1`
+    ... which satisfies dependency `rusqlite = "^0.41"` (locked to 0.41.1) of package `mochi-core v0.1.16 (D:\a\mochi\mochi\crates\mochi-core)`
+    ... which satisfies path dependency `mochi-core` (locked to 0.1.16) of package `mochi-desktop v0.1.16 (D:\a\mochi\mochi\apps\desktop\src-tauri)`
+failed to build app: failed to build app
+       Error failed to build app: failed to build app
+D:\a\mochi\mochi\apps\desktop:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @mochi/desktop@0.1.16 tauri: `tauri "build"`
+Exit status 1
