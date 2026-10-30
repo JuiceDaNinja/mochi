@@ -27,6 +27,8 @@ async function boot() {
     () => ({ w: view.root.offsetWidth, h: view.root.offsetHeight }),
     () => ({ w: window.innerWidth, h: window.innerHeight }),
     () => view.bodyRect().height,
+    // Keep Mochi above the taskbar: the window covers the whole monitor, the work area does not.
+    () => Math.min(window.innerHeight, mon.work_bottom || window.innerHeight),
   );
   mover.monitorOrigin = { x: mon.x, y: mon.y };
 

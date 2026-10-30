@@ -79,6 +79,8 @@ struct MonitorDto {
     h: f64,
     scale: f64,
     primary: bool,
+    /// Bottom of the usable desktop (above the taskbar / dock), in logical px relative to the monitor top.
+    work_bottom: f64,
 }
 
 #[derive(Deserialize, Clone, Copy)]
@@ -105,7 +107,9 @@ fn primary_monitor(window: WebviewWindow, state: State<'_, AppState>) -> Result<
     let s = m.size();
     let scale = m.scale_factor();
     *state.scale.lock().unwrap() = scale;
-    Ok(MonitorDto { id: 0, x: p.x as f64 / scale, y: p.y as f64 / scale, w: s.width as f64 / scale, h: s.height as f64 / scale, scale, primary: true })
+    let wa = m.work_area();
+    let work_bottom = (wa.position.y + wa.size.height as i32 - p.y) as f64 / scale;
+    Ok(MonitorDto { id: 0, x: p.x as f64 / scale, y: p.y as f64 / scale, w: s.width as f64 / scale, h: s.height as f64 / scale, scale, primary: true, work_bottom })
 }
 
 #[tauri::command]
