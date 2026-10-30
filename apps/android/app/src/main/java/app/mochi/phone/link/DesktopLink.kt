@@ -49,6 +49,11 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
 
     /** Connect to a known desktop (auth) or start pairing with a new one. */
     fun connect(desktop: Desktop) {
+        val phase = _ui.value.phase
+        if (phase != LinkUi.Phase.Disconnected && target?.host == desktop.host && target?.port == desktop.port) {
+            note("already connecting to ${desktop.name}; ignoring second tap")
+            return
+        }
         target = desktop
         wantConnected = true
         open()
@@ -79,6 +84,9 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
 
     private fun open() {
         val d = target ?: return
+        // Never two sockets at once: a second connection would split the pairing approvals.
+        socket?.let { old -> socket = null; old.cancel(); note("replaced an older socket") }
+        pairing = null
         _ui.update { it.copy(phase = LinkUi.Phase.Connecting, desktopName = d.name, error = null) }
         val req = Request.Builder().url("ws://${d.host}:${d.port}/").build()
         socket = client.newWebSocket(req, listener)
@@ -87,17 +95,19 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
     private val listener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) { note("socket open") }
         override fun onMessage(webSocket: WebSocket, text: String) {
-            if (text.length > MAX_FRAME_BYTES) return
+            if (webSocket !== socket || text.length > MAX_FRAME_BYTES) return
             val m = try { DesktopMessage.parse(text) } catch (e: Exception) { note("bad frame: ${e.message}"); return }
             note("← ${m::class.simpleName}")
             try { handle(m) } catch (e: Exception) { note("handler failed: ${e::class.simpleName}: ${e.message}"); _ui.update { it.copy(error = "${e::class.simpleName}: ${e.message}") } }
         }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            if (webSocket !== socket) return // an old, replaced socket going away
             note("failure: ${t.message}")
             _ui.update { it.copy(phase = LinkUi.Phase.Disconnected, error = t.message) }
             scheduleReconnect()
         }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            if (webSocket !== socket) return
             note("closed $code $reason")
             _ui.update { it.copy(phase = LinkUi.Phase.Disconnected) }
             scheduleReconnect()

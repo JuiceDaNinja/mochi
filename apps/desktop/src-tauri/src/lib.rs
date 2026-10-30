@@ -274,6 +274,7 @@ fn link_status(state: State<'_, AppState>) -> LinkStatus {
 
 #[tauri::command]
 fn pair_answer(state: State<'_, AppState>, session: u64, yes: bool) {
+    log(&format!("link: desktop answered session {session}: {}", if yes { "yes" } else { "no" }));
     if let Some(l) = state.link.lock().unwrap().as_ref() {
         l.approve(session, yes);
     }
@@ -308,6 +309,7 @@ fn spawn_link(app: AppHandle, data_dir: PathBuf) {
                     log(&format!("link: pair request from {device_name}, code {code}"));
                     let _ = app.emit("mochi://pair-request", serde_json::json!({ "session": session, "device_name": device_name, "code": code }));
                 }
+                LinkEvent::PairProgress { .. } => log(&format!("link: {ev:?}")),
                 LinkEvent::Paired { .. } | LinkEvent::PairFailed { .. } | LinkEvent::Connected { .. } | LinkEvent::Disconnected { .. } => {
                     log(&format!("link: {ev:?}"));
                     let _ = app.emit("mochi://link", format!("{ev:?}"));

@@ -68,6 +68,8 @@ impl Default for LinkConfig {
 pub enum LinkEvent {
     /// A new phone wants to pair. Show `code` and Approve/Deny; answer with `LinkHandle::approve`.
     PairRequest { session: u64, device_name: String, code: String },
+    /// One side approved; the other is still pending. For logs and a progress hint.
+    PairProgress { session: u64, phone_approved: bool, desktop_approved: bool },
     Paired { device_id: String, device_name: String },
     PairFailed { session: u64, reason: String },
     Connected { device_id: String, device_name: String },
@@ -199,7 +201,15 @@ async fn serve(stream: TcpStream, _peer: SocketAddr, session: u64, h: LinkHandle
             let code = pairing_code(&secret);
             send(&mut ws, &DesktopMessage::PairChallenge { desktop_name: cfg.desktop_name.clone(), code: code.clone(), desktop_public_key_b64: our_pub }).await?;
             let (tx, rx) = oneshot::channel();
-            h.pending.lock().unwrap().insert(session, tx);
+            // One phone at a time: a new request supersedes any pairing still waiting
+            // (a phone that reconnected mid-pairing would otherwise split the approvals).
+            {
+                let mut pending = h.pending.lock().unwrap();
+                for (_, old) in pending.drain() {
+                    let _ = old.send(false);
+                }
+                pending.insert(session, tx);
+            }
             let _ = ev.send(LinkEvent::PairRequest { session, device_name: device_name.clone(), code }).await;
 
             // Both approvals, in any order, within the timeout.
@@ -212,9 +222,16 @@ async fn serve(stream: TcpStream, _peer: SocketAddr, session: u64, h: LinkHandle
                 if desktop_ok == Some(true) && phone_ok { break true; }
                 if desktop_ok == Some(false) { break false; }
                 tokio::select! {
-                    r = async { rx.as_mut().unwrap().await }, if rx.is_some() => { desktop_ok = Some(r.unwrap_or(false)); rx = None; }
+                    r = async { rx.as_mut().unwrap().await }, if rx.is_some() => {
+                        desktop_ok = Some(r.unwrap_or(false));
+                        rx = None;
+                        let _ = ev.send(LinkEvent::PairProgress { session, phone_approved: phone_ok, desktop_approved: desktop_ok == Some(true) }).await;
+                    }
                     m = read_phone(&mut ws) => match m {
-                        Some(Ok(PhoneMessage::PairApprove)) => phone_ok = true,
+                        Some(Ok(PhoneMessage::PairApprove)) => {
+                            phone_ok = true;
+                            let _ = ev.send(LinkEvent::PairProgress { session, phone_approved: true, desktop_approved: desktop_ok == Some(true) }).await;
+                        }
                         Some(Ok(_)) => {}
                         _ => break false,
                     },
@@ -339,6 +356,15 @@ mod tests {
     async fn send(ws: &mut Client, m: PhoneMessage) {
         ws.send(Message::Text(serde_json::to_string(&m).unwrap().into())).await.unwrap();
     }
+    /// Next event that is not a progress note.
+    async fn ev(events: &mut mpsc::Receiver<LinkEvent>) -> LinkEvent {
+        loop {
+            match events.recv().await.unwrap() {
+                LinkEvent::PairProgress { .. } => continue,
+                e => return e,
+            }
+        }
+    }
 
     /// Minimal temp dir without pulling in a crate.
     mod tempfile_path {
@@ -368,35 +394,36 @@ mod tests {
         let secret = phone.shared_secret(&desktop_public_key_b64).unwrap();
         assert_eq!(code, pairing_code(&secret), "both screens compute the same code from the shared secret");
 
-        let LinkEvent::PairRequest { session, device_name, code: shown } = events.recv().await.unwrap() else { panic!() };
+        let LinkEvent::PairRequest { session, device_name, code: shown } = ev(&mut events).await else { panic!() };
         assert_eq!((device_name.as_str(), shown.as_str()), ("Pixel", code.as_str()));
 
         // Phone approves first; nothing happens until the desktop approves too.
         send(&mut ws, PhoneMessage::PairApprove).await;
         tokio::time::sleep(Duration::from_millis(100)).await;
-        assert!(events.try_recv().is_err());
+        assert!(matches!(events.try_recv(), Ok(LinkEvent::PairProgress { phone_approved: true, desktop_approved: false, .. })));
+        assert!(events.try_recv().is_err(), "nothing else until the desktop approves");
         link.handle.approve(session, true);
         let DesktopMessage::Paired { device_id } = recv(&mut ws).await else { panic!("expected paired") };
-        assert!(matches!(events.recv().await.unwrap(), LinkEvent::Paired { .. }));
-        assert!(matches!(events.recv().await.unwrap(), LinkEvent::Connected { .. }));
+        assert!(matches!(ev(&mut events).await, LinkEvent::Paired { .. }));
+        assert!(matches!(ev(&mut events).await, LinkEvent::Connected { .. }));
         assert_eq!(link.handle.connected().map(|c| c.1), Some("Pixel".into()));
 
         // --- talk both ways ---
         send(&mut ws, PhoneMessage::Utterance { text: "reply to Sara".into(), is_final: true }).await;
-        assert_eq!(events.recv().await.unwrap(), LinkEvent::Utterance { text: "reply to Sara".into(), is_final: true });
+        assert_eq!(ev(&mut events).await, LinkEvent::Utterance { text: "reply to Sara".into(), is_final: true });
         link.handle.send(DesktopMessage::Narrate { text: "Opening Gmail…".into(), audio_url: None });
         assert!(matches!(recv(&mut ws).await, DesktopMessage::Narrate { text, .. } if text == "Opening Gmail…"));
         send(&mut ws, PhoneMessage::Answer { yes: true }).await;
-        assert_eq!(events.recv().await.unwrap(), LinkEvent::Answer { yes: true });
+        assert_eq!(ev(&mut events).await, LinkEvent::Answer { yes: true });
 
         // --- drop and reconnect with HMAC auth ---
         drop(ws);
-        assert!(matches!(events.recv().await.unwrap(), LinkEvent::Disconnected { .. }));
+        assert!(matches!(ev(&mut events).await, LinkEvent::Disconnected { .. }));
         let mut ws = connect(&link).await;
         let DesktopMessage::Hello { nonce_b64, .. } = recv(&mut ws).await else { panic!() };
         send(&mut ws, PhoneMessage::Auth { device_id: device_id.clone(), hmac_b64: PhoneCrypto::auth_hmac(&secret, &nonce_b64) }).await;
         assert!(matches!(recv(&mut ws).await, DesktopMessage::AuthOk));
-        assert!(matches!(events.recv().await.unwrap(), LinkEvent::Connected { .. }));
+        assert!(matches!(ev(&mut events).await, LinkEvent::Connected { .. }));
 
         // Wrong secret is refused.
         let mut bad = connect(&link).await;
@@ -408,6 +435,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_second_pair_request_supersedes_the_first() {
+        let (link, mut events, _dir) = start(Duration::from_secs(30)).await;
+        let mut ws1 = connect(&link).await;
+        let _ = recv(&mut ws1).await;
+        let p1 = PhoneCrypto::new();
+        send(&mut ws1, PhoneMessage::PairRequest { device_name: "Pixel".into(), public_key_b64: p1.public_key_b64() }).await;
+        let _ = recv(&mut ws1).await;
+        let LinkEvent::PairRequest { session: s1, .. } = events.recv().await.unwrap() else { panic!() };
+        send(&mut ws1, PhoneMessage::PairApprove).await;
+        assert!(matches!(events.recv().await.unwrap(), LinkEvent::PairProgress { phone_approved: true, desktop_approved: false, .. }));
+
+        // The phone reconnects and asks again before the desktop answered.
+        let mut ws2 = connect(&link).await;
+        let _ = recv(&mut ws2).await;
+        let p2 = PhoneCrypto::new();
+        send(&mut ws2, PhoneMessage::PairRequest { device_name: "Pixel".into(), public_key_b64: p2.public_key_b64() }).await;
+        let _ = recv(&mut ws2).await;
+        // The first session is denied and closed.
+        assert!(matches!(recv(&mut ws1).await, DesktopMessage::PairDenied));
+        let mut seen_s2 = None;
+        for _ in 0..3 {
+            match events.recv().await.unwrap() {
+                LinkEvent::PairRequest { session, .. } => seen_s2 = Some(session),
+                LinkEvent::PairFailed { session, .. } => assert_eq!(session, s1),
+                other => panic!("unexpected {other:?}"),
+            }
+            if seen_s2.is_some() { break; }
+        }
+        let s2 = seen_s2.unwrap();
+        assert_ne!(s1, s2);
+        // Approvals on the new session complete it.
+        send(&mut ws2, PhoneMessage::PairApprove).await;
+        link.handle.approve(s2, true);
+        let mut paired = false;
+        for _ in 0..6 {
+            if let DesktopMessage::Paired { .. } = recv(&mut ws2).await { paired = true; break; }
+        }
+        assert!(paired);
+    }
+
+    #[tokio::test]
     async fn desktop_denial_ends_pairing_and_stores_nothing() {
         let (link, mut events, _dir) = start(Duration::from_secs(30)).await;
         let mut ws = connect(&link).await;
@@ -415,11 +483,11 @@ mod tests {
         let phone = PhoneCrypto::new();
         send(&mut ws, PhoneMessage::PairRequest { device_name: "Pixel".into(), public_key_b64: phone.public_key_b64() }).await;
         let _ = recv(&mut ws).await;
-        let LinkEvent::PairRequest { session, .. } = events.recv().await.unwrap() else { panic!() };
+        let LinkEvent::PairRequest { session, .. } = ev(&mut events).await else { panic!() };
         send(&mut ws, PhoneMessage::PairApprove).await;
         link.handle.approve(session, false);
         assert!(matches!(recv(&mut ws).await, DesktopMessage::PairDenied));
-        assert!(matches!(events.recv().await.unwrap(), LinkEvent::PairFailed { .. }));
+        assert!(matches!(ev(&mut events).await, LinkEvent::PairFailed { .. }));
         assert!(link.handle.devices().is_empty());
     }
 
@@ -431,12 +499,12 @@ mod tests {
         let phone = PhoneCrypto::new();
         send(&mut ws, PhoneMessage::PairRequest { device_name: "P".into(), public_key_b64: phone.public_key_b64() }).await;
         let _ = recv(&mut ws).await;
-        let LinkEvent::PairRequest { session, .. } = events.recv().await.unwrap() else { panic!() };
+        let LinkEvent::PairRequest { session, .. } = ev(&mut events).await else { panic!() };
         send(&mut ws, PhoneMessage::PairApprove).await;
         link.handle.approve(session, true);
         let _ = recv(&mut ws).await; // paired
-        let _ = events.recv().await; // paired
-        let _ = events.recv().await; // connected
+        let _ = ev(&mut events).await; // paired
+        let _ = ev(&mut events).await; // connected
 
         // Answer pings for a while: still connected.
         let t0 = std::time::Instant::now();
@@ -445,7 +513,7 @@ mod tests {
                 if t.contains("\"ping\"") { send(&mut ws, PhoneMessage::Pong).await; }
             }
         }
-        assert!(events.try_recv().is_err(), "still connected while ponging");
+        assert!(!matches!(events.try_recv(), Ok(LinkEvent::Disconnected { .. })), "still connected while ponging");
 
         // Stop answering: closed after 3 missed pings (~4 intervals).
         let closed = tokio::time::timeout(Duration::from_secs(2), async {
