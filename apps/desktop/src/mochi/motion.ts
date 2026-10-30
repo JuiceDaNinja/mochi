@@ -5,6 +5,9 @@ import { Bounds } from "./events";
 
 export type Point = { x: number; y: number };
 
+/** Breathing room between Mochi's feet and the taskbar at home. */
+const HOME_GAP = 12;
+
 export class Mover {
   private pos: Point;
   private from: Point;
@@ -23,6 +26,8 @@ export class Mover {
     private viewport: () => { w: number; h: number },
     /** Height of the body alone; the root also holds the bubble and buttons above it. */
     private bodyH: () => number = () => 0,
+    /** Lowest usable y (window-local): the top of the taskbar/dock. Defaults to the viewport bottom. */
+    private floor: () => number = () => this.viewport().h,
   ) {
     this.pos = this.home();
     this.from = this.pos;
@@ -30,11 +35,11 @@ export class Mover {
     this.place(this.pos);
   }
 
-  /** Bottom center, resting on the taskbar edge. */
+  /** Bottom center, resting just above the taskbar. */
   home(): Point {
     const v = this.viewport();
     const s = this.size();
-    return { x: (v.w - s.w) / 2, y: v.h - s.h - 4 };
+    return { x: (v.w - s.w) / 2, y: this.floor() - s.h - HOME_GAP };
   }
 
   current(): Point {
@@ -57,7 +62,7 @@ export class Mover {
     x = Math.max(4, Math.min(v.w - s.w - 4, x));
     // Centre the body (bottom of the root) on the target, leaving the bubble above it.
     let y = ty + target.h / 2 - (s.h - this.bodyH() * 0.5);
-    y = Math.max(4, Math.min(v.h - s.h - 4, y));
+    y = Math.max(4, Math.min(this.floor() - s.h - 4, y));
     this.glideTo({ x, y });
   }
 

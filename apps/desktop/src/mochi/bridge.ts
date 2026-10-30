@@ -7,7 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Bounds, CharacterEvent } from "./events";
 
 export type Cursor = { x: number; y: number };
-export type MonitorInfo = { id: number; x: number; y: number; w: number; h: number; scale: number; primary: boolean };
+export type MonitorInfo = { id: number; x: number; y: number; w: number; h: number; scale: number; primary: boolean; work_bottom: number };
 
 export interface Bridge {
   readonly kind: "tauri" | "browser";
@@ -104,7 +104,7 @@ export class BrowserBridge implements Bridge {
   async cancel() { this.cancelled = true; this.waitingConfirm?.(false); this.waitingTeach?.(); }
   reportBodyRect() {}
   async monitor(): Promise<MonitorInfo> {
-    return { id: 0, x: 0, y: 0, w: window.innerWidth, h: window.innerHeight, scale: window.devicePixelRatio, primary: true };
+    return { id: 0, x: 0, y: 0, w: window.innerWidth, h: window.innerHeight, scale: window.devicePixelRatio, primary: true, work_bottom: window.innerHeight };
   }
 
   private emit(ev: CharacterEvent) { for (const h of this.handlers) h(ev); }
