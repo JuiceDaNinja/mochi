@@ -70,7 +70,8 @@ jobs:
           Get-ChildItem -Recurse -Path target,apps/desktop/src-tauri/target -Include *.exe,*.msi -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match 'release' -and $_.FullName -notmatch 'build\\|deps\\' } |
             ForEach-Object { Copy-Item $_.FullName out/ }
-          if (Test-Path out/mochi-desktop.exe) { Rename-Item out/mochi-desktop.exe Mochi-portable.exe }
+          $v = (Get-Content apps/desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if (Test-Path out/mochi-desktop.exe) { Rename-Item out/mochi-desktop.exe "Mochi_${v}_x64-portable.exe" }
           Get-ChildItem out
       - uses: actions/upload-artifact@v4
         with:
@@ -91,9 +92,12 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          # One version for everything: the Tauri config is the source of truth.
+          VERSION=$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)
+          CODE=$(( $(echo "$VERSION" | cut -d. -f1) * 10000 + $(echo "$VERSION" | cut -d. -f2) * 100 + $(echo "$VERSION" | cut -d. -f3) ))
           cd apps/android
-          { gradle wrapper --gradle-version 8.11.1 --no-daemon && ./gradlew --no-daemon --stacktrace test assembleDebug; } 2>&1 | tee ../../build.log
-          mkdir -p out && cp app/build/outputs/apk/debug/app-debug.apk out/Mochi-android.apk
+          { gradle wrapper --gradle-version 8.11.1 --no-daemon && ./gradlew --no-daemon --stacktrace -PmochiVersion="$VERSION" -PmochiVersionCode="$CODE" test assembleDebug; } 2>&1 | tee ../../build.log
+          mkdir -p out && cp app/build/outputs/apk/debug/app-debug.apk "out/Mochi_${VERSION}_android.apk"
       - name: Publish errors for review
         if: failure()
         shell: bash
@@ -112,7 +116,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Mochi-android
-          path: apps/android/out/Mochi-android.apk
+          path: apps/android/out/*.apk
 
   release:
     name: Attach to release
@@ -126,7 +130,7 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           name: Mochi ${{ inputs.tag || github.ref_name }}
-          body: "Test build. Windows: run the `Mochi_*-setup.exe` installer (or `Mochi-portable.exe`). Android: install `Mochi-android.apk` (allow installs from unknown sources)."
+          body: "Windows: run the `Mochi_<version>_x64-setup.exe` installer (or the portable exe). Android: install `Mochi_<version>_android.apk` (allow installs from unknown sources)."
           files: |
             dist/Mochi-windows/*
             dist/Mochi-android/*

@@ -11,8 +11,9 @@ android {
         applicationId = "app.mochi.phone"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.1.6"
+        // Stamped by CI from apps/desktop/src-tauri/tauri.conf.json so the APK matches the exe.
+        versionCode = (project.findProperty("mochiVersionCode") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("mochiVersion") as String?) ?: "0.0.0-dev"
     }
     buildTypes {
         release { isMinifyEnabled = false }
