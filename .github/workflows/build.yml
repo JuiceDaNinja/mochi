@@ -38,7 +38,25 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - name: Build Tauri app
-        run: pnpm --filter @mochi/desktop tauri build
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @mochi/desktop tauri build 2>&1 | tee build.log
+      - name: Publish errors for review
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: windows-${{ github.run_number }}
+        run: |
+          { grep -nE "error(\[E[0-9]+\])?:|^e: |error TS|What went wrong|FAILURE|Caused by|panicked|cannot find|unresolved|mismatched|expected|npm ERR|ELIFECYCLE" build.log | head -300; echo; echo "----- tail -----"; tail -120 build.log; } > errors.txt || true
+          R="$GITHUB_REPOSITORY"
+          if ! gh api "repos/$R/git/refs/heads/ci-logs" >/dev/null 2>&1; then
+            MAIN=$(gh api "repos/$R/git/refs/heads/main" --jq .object.sha)
+            gh api -X POST "repos/$R/git/refs" -f ref=refs/heads/ci-logs -f sha="$MAIN" >/dev/null
+          fi
+          gh api -X PUT "repos/$R/contents/logs/$NAME.txt" -f message="ci log $NAME" -f branch=ci-logs -f content="$(base64 -w0 errors.txt)" >/dev/null
+          echo "published logs/$NAME.txt on branch ci-logs"
       - name: Collect
         shell: pwsh
         run: |
@@ -63,11 +81,27 @@ jobs:
       - name: Accept SDK licenses (SDK is preinstalled on ubuntu-latest)
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
       - name: Build debug APK
-        working-directory: apps/android
+        shell: bash
         run: |
-          gradle wrapper --gradle-version 8.11.1 --no-daemon
-          ./gradlew --no-daemon test assembleDebug
+          set -o pipefail
+          cd apps/android
+          { gradle wrapper --gradle-version 8.11.1 --no-daemon && ./gradlew --no-daemon --stacktrace test assembleDebug; } 2>&1 | tee ../../build.log
           mkdir -p out && cp app/build/outputs/apk/debug/app-debug.apk out/Mochi-android.apk
+      - name: Publish errors for review
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: android-${{ github.run_number }}
+        run: |
+          { grep -nE "error(\[E[0-9]+\])?:|^e: |error TS|What went wrong|FAILURE|Caused by|panicked|cannot find|unresolved|mismatched|expected|npm ERR|ELIFECYCLE" build.log | head -300; echo; echo "----- tail -----"; tail -120 build.log; } > errors.txt || true
+          R="$GITHUB_REPOSITORY"
+          if ! gh api "repos/$R/git/refs/heads/ci-logs" >/dev/null 2>&1; then
+            MAIN=$(gh api "repos/$R/git/refs/heads/main" --jq .object.sha)
+            gh api -X POST "repos/$R/git/refs" -f ref=refs/heads/ci-logs -f sha="$MAIN" >/dev/null
+          fi
+          gh api -X PUT "repos/$R/contents/logs/$NAME.txt" -f message="ci log $NAME" -f branch=ci-logs -f content="$(base64 -w0 errors.txt)" >/dev/null
+          echo "published logs/$NAME.txt on branch ci-logs"
       - uses: actions/upload-artifact@v4
         with:
           name: Mochi-android
