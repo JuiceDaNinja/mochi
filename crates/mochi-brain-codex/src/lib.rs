@@ -6,8 +6,8 @@
 //! `-i`, the final answer comes back through `-o <file>`, and later cycles use
 //! `codex exec resume <thread id>` so Codex keeps the conversation.
 //!
-//! Flags verified against codex-cli 0.166: `exec [PROMPT] --json -m -i -C -s read-only
-//! --skip-git-repo-check -o <FILE>`; `exec resume <SESSION_ID> [PROMPT]`.
+//! Flags verified against codex-cli 0.166: `exec --json -m -i -C --skip-git-repo-check -o <FILE>`;
+//! `exec resume <SESSION_ID> --json -m -i --skip-git-repo-check -o <FILE>` (no -C there).
 
 use async_trait::async_trait;
 use base64::Engine;
@@ -67,13 +67,15 @@ impl CodexBrain {
         let mut cmd = Command::new(program);
         cmd.args(lead);
         cmd.arg("exec");
+        // `exec resume` takes a narrower flag set than `exec` (no -C, no --sandbox); the
+        // session already remembers its working directory.
         if let Some(id) = resume {
             cmd.arg("resume").arg(id);
+        } else {
+            cmd.arg("-C").arg(&self.cfg.work_dir);
         }
-        cmd.arg("--json")
-            .arg("--skip-git-repo-check")
-            .arg("-C").arg(&self.cfg.work_dir)
-            .arg("-o").arg(last_msg);
+        cmd.arg("--json").arg("--skip-git-repo-check").arg("-o").arg(last_msg);
+        cmd.current_dir(&self.cfg.work_dir);
         if let Some(m) = &self.cfg.model {
             cmd.arg("-m").arg(m);
         }
@@ -85,6 +87,26 @@ impl CodexBrain {
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         cmd
+    }
+}
+
+impl CodexBrain {
+    /// Spawn one `codex exec`, feed the prompt on stdin, wait with a timeout.
+    async fn run_once(&self, resume: Option<&str>, prompt: &str, image: Option<&PathBuf>, last_msg: &PathBuf) -> Result<(std::process::ExitStatus, String, String)> {
+        let mut child = self
+            .build_command(resume, image, last_msg)
+            .spawn()
+            .map_err(|e| MochiError::BrainUnreachable(format!("cannot start `{}`: {e}", self.cfg.binary)))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(prompt.as_bytes()).await.map_err(|e| MochiError::BrainUnreachable(e.to_string()))?;
+            stdin.shutdown().await.ok();
+        }
+        let output = match tokio::time::timeout(self.cfg.timeout, child.wait_with_output()).await {
+            Ok(Ok(o)) => o,
+            Ok(Err(e)) => return Err(MochiError::BrainUnreachable(e.to_string())),
+            Err(_) => return Err(MochiError::BrainUnreachable("codex timed out".into())),
+        };
+        Ok((output.status, String::from_utf8_lossy(&output.stdout).to_string(), String::from_utf8_lossy(&output.stderr).to_string()))
     }
 }
 
@@ -150,29 +172,27 @@ impl Brain for CodexBrain {
         let last_msg = self.cfg.work_dir.join("last.txt");
         let _ = std::fs::remove_file(&last_msg);
 
-        let mut prompt = String::new();
-        if resume.is_none() {
-            prompt.push_str("Rules (also in AGENTS.md):\n");
-            prompt.push_str(SYSTEM_PROMPT);
-            prompt.push_str("\n\n");
-        }
-        prompt.push_str(&render_user_message(&input));
-
-        let mut child = self
-            .build_command(resume.as_deref(), image.as_ref(), &last_msg)
-            .spawn()
-            .map_err(|e| MochiError::BrainUnreachable(format!("cannot start `{}`: {e}", self.cfg.binary)))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(prompt.as_bytes()).await.map_err(|e| MochiError::BrainUnreachable(e.to_string()))?;
-            stdin.shutdown().await.ok();
-        }
-        let output = match tokio::time::timeout(self.cfg.timeout, child.wait_with_output()).await {
-            Ok(Ok(o)) => o,
-            Ok(Err(e)) => return Err(MochiError::BrainUnreachable(e.to_string())),
-            Err(_) => return Err(MochiError::BrainUnreachable("codex timed out".into())),
+        let full_prompt = |with_rules: bool| {
+            let mut p = String::new();
+            if with_rules {
+                p.push_str("Rules (also in AGENTS.md):\n");
+                p.push_str(SYSTEM_PROMPT);
+                p.push_str("\n\n");
+            }
+            p.push_str(&render_user_message(&input));
+            p
         };
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        let mut resume = resume;
+        let mut run = self.run_once(resume.as_deref(), &full_prompt(resume.is_none()), image.as_ref(), &last_msg).await?;
+        if resume.is_some() && !run.0.success() && std::fs::read_to_string(&last_msg).map(|t| t.trim().is_empty()).unwrap_or(true) {
+            // The resumed session is unusable (expired, CLI flag drift, …): start a fresh one.
+            *self.thread.lock().unwrap() = None;
+            resume = None;
+            let _ = std::fs::remove_file(&last_msg);
+            run = self.run_once(None, &full_prompt(true), image.as_ref(), &last_msg).await?;
+        }
+        let (status, stdout, stderr) = run;
 
         if resume.is_none() {
             if let Some(id) = find_thread_id(&stdout) {
@@ -184,7 +204,7 @@ impl Brain for CodexBrain {
             let detail = stderr.lines().rev().find(|l| !l.trim().is_empty()).map(str::to_string)
                 .or_else(|| stdout.lines().rev().find(|l| !l.trim().is_empty()).map(|l| l.chars().take(300).collect()))
                 .unwrap_or_else(|| "no output".into());
-            return Err(MochiError::BrainUnreachable(format!("codex exited with {}: {detail}", output.status)));
+            return Err(MochiError::BrainUnreachable(format!("codex exited with {status}: {detail}")));
         }
 
         let events = parse_step_events(&text);
@@ -237,6 +257,7 @@ mod tests {
         let img = dir.join("screen.png");
         let later = format!("{:?}", b.build_command(Some("t-1"), Some(&img), &last).as_std());
         assert!(later.contains("resume") && later.contains("t-1") && later.contains("-i"));
+        assert!(!later.contains("\"-C\""), "resume does not accept -C");
         b.prepare_dir().unwrap();
         assert!(std::fs::read_to_string(dir.join("AGENTS.md")).unwrap().contains("Mochi"));
         let _ = std::fs::remove_dir_all(dir);
