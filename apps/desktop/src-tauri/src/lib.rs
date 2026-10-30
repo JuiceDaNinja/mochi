@@ -131,14 +131,16 @@ async fn probe_brain(state: State<'_, AppState>) -> Result<ProbeResult, String> 
     Ok(match s.brain {
         BrainKind::Mock => ProbeResult { ok: true, detail: "Demo mode: scripted Gmail on a pretend screen.".into() },
         BrainKind::ClaudeCode => {
-            let version = match tokio::process::Command::new(&s.claude.binary).arg("--version").output().await {
+            let (prog, lead) = mochi_core::launch::resolve_program(&s.claude.binary);
+            let version = match tokio::process::Command::new(&prog).args(&lead).arg("--version").output().await {
                 Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
                 Ok(o) => return Ok(ProbeResult { ok: false, detail: format!("`{} --version` failed: {}", s.claude.binary, String::from_utf8_lossy(&o.stderr).trim()) }),
                 Err(e) => return Ok(ProbeResult { ok: false, detail: format!("Cannot start `{}`: {e}. Install Claude Code (npm i -g @anthropic-ai/claude-code) and sign in once.", s.claude.binary) }),
             };
             // A real one-line call with the chosen model: catches sign-in and model/plan problems.
             let model = claude_model(&s);
-            let mut cmd = tokio::process::Command::new(&s.claude.binary);
+            let mut cmd = tokio::process::Command::new(&prog);
+            cmd.args(&lead);
             cmd.args(["-p", "Reply with exactly: OK", "--output-format", "json", "--tools", "", "--max-turns", "1", "--no-session-persistence", "--model", &model]);
             cmd.current_dir(&state.data_dir);
             #[cfg(windows)]
@@ -163,15 +165,17 @@ async fn probe_brain(state: State<'_, AppState>) -> Result<ProbeResult, String> 
             }
         }
         BrainKind::Codex => {
-            let version = match tokio::process::Command::new(&s.codex.binary).arg("--version").output().await {
+            let (prog, lead) = mochi_core::launch::resolve_program(&s.codex.binary);
+            let version = match tokio::process::Command::new(&prog).args(&lead).arg("--version").output().await {
                 Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
                 Ok(o) => return Ok(ProbeResult { ok: false, detail: format!("`{} --version` failed: {}", s.codex.binary, String::from_utf8_lossy(&o.stderr).trim()) }),
                 Err(e) => return Ok(ProbeResult { ok: false, detail: format!("Cannot start `{}`: {e}. Install Codex CLI (npm i -g @openai/codex) and run `codex login` once.", s.codex.binary) }),
             };
             let work = state.data_dir.join("codex");
             let _ = std::fs::create_dir_all(&work);
-            let mut cmd = tokio::process::Command::new(&s.codex.binary);
-            cmd.args(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "-C"]).arg(&work).args(["-o"]).arg(work.join("probe.txt")).args(["Reply with exactly: OK"]);
+            let mut cmd = tokio::process::Command::new(&prog);
+            cmd.args(&lead);
+            cmd.args(["exec", "--skip-git-repo-check", "-C"]).arg(&work).args(["-o"]).arg(work.join("probe.txt")).args(["Reply with exactly: OK"]);
             if let Some(m) = s.codex.model.clone().filter(|m| !m.trim().is_empty()) { cmd.args(["-m", &m]); }
             #[cfg(windows)]
             {

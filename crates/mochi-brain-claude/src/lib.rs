@@ -53,7 +53,9 @@ impl ClaudeBrain {
     }
 
     fn build_command(&self, resume: Option<&str>, new_id: &str) -> Command {
-        let mut cmd = Command::new(&self.cfg.binary);
+        let (program, lead) = mochi_core::launch::resolve_program(&self.cfg.binary);
+        let mut cmd = Command::new(program);
+        cmd.args(lead);
         cmd.arg("-p")
             .arg("--input-format").arg("stream-json")
             .arg("--output-format").arg("stream-json")

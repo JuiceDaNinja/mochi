@@ -54,6 +54,7 @@ async function makeApi() {
         forgetDevice: (device_id: string) => invoke<void>("forget_device", { deviceId: device_id }),
         onPair: async (cb: (r: PairRequest) => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen<PairRequest>("mochi://pair-request", (e) => cb(e.payload)); },
         onLink: async (cb: () => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen("mochi://link", () => cb()); },
+        onTaskFinished: async (cb: (outcome: string) => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen<string>("mochi://task-finished", (e) => cb(e.payload)); },
         close: async () => { onClose?.(); },
         log: (line: string) => invoke<void>("log_js", { line }).catch(() => {}),
         quit: () => invoke<void>("quit_app"),
@@ -74,6 +75,7 @@ function browserApi() {
       forgetDevice: async () => {},
       onPair: async (cb: (r: PairRequest) => void) => { (window as any).fakePairRequest = () => cb({ session: 1, device_name: "Pixel 9", code: "482913" }); },
       onLink: async () => {},
+      onTaskFinished: async () => {},
       close: async () => { onClose?.(); },
       log: async (line: string) => console.log(line),
       quit: async () => {},
@@ -100,6 +102,7 @@ async function render() {
         <h2>Ask Mochi</h2>
         <form id="ask" class="row"><input id="task" type="text" placeholder="e.g. reply to Sara and say I'll be there at 6" autocomplete="off"><button type="submit" class="primary">Go</button><button type="button" id="stop">Stop</button></form>
         <p class="hint">Mochi works in whatever window is in front. It asks before sending, posting, deleting or closing unsaved work.</p>
+        <p id="last-task" class="hint"></p>
       </section>
 
       <section>
@@ -259,6 +262,12 @@ async function render() {
   };
   await fillLink();
   await api.onLink(fillLink);
+  await api.onTaskFinished((outcome) => {
+    const el = $("#last-task");
+    const failed = /Failed|Blocked|GaveUp/.test(outcome);
+    el.textContent = `Last task: ${outcome.replace(/^(\w+)\s*\{\s*(?:error|reason|summary|description):\s*"?/, "$1 — ").replace(/"?\s*\}$/, "")}`;
+    el.className = failed ? "hint bad" : "hint ok";
+  });
   await api.onPair((r) => {
     $("#pair").hidden = false;
     $("#pair-name").textContent = r.device_name;

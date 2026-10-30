@@ -8,6 +8,7 @@
 pub mod brain;
 pub mod engine;
 pub mod gate;
+pub mod launch;
 pub mod memory;
 pub mod perception;
 pub mod prompt;

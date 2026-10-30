@@ -63,14 +63,15 @@ impl CodexBrain {
     }
 
     fn build_command(&self, resume: Option<&str>, image: Option<&PathBuf>, last_msg: &PathBuf) -> Command {
-        let mut cmd = Command::new(&self.cfg.binary);
+        let (program, lead) = mochi_core::launch::resolve_program(&self.cfg.binary);
+        let mut cmd = Command::new(program);
+        cmd.args(lead);
         cmd.arg("exec");
         if let Some(id) = resume {
             cmd.arg("resume").arg(id);
         }
         cmd.arg("--json")
             .arg("--skip-git-repo-check")
-            .arg("--sandbox").arg("read-only")
             .arg("-C").arg(&self.cfg.work_dir)
             .arg("-o").arg(last_msg);
         if let Some(m) = &self.cfg.model {
@@ -182,8 +183,10 @@ impl Brain for CodexBrain {
             }
         }
         let text = std::fs::read_to_string(&last_msg).ok().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| collect_agent_text(&stdout));
-        if !output.status.success() && text.trim().is_empty() {
-            let detail = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no output").to_string();
+        if text.trim().is_empty() {
+            let detail = stderr.lines().rev().find(|l| !l.trim().is_empty()).map(str::to_string)
+                .or_else(|| stdout.lines().rev().find(|l| !l.trim().is_empty()).map(|l| l.chars().take(300).collect()))
+                .unwrap_or_else(|| "no output".into());
             return Err(MochiError::BrainUnreachable(format!("codex exited with {}: {detail}", output.status)));
         }
 
@@ -233,7 +236,7 @@ mod tests {
         let b = CodexBrain::new(CodexConfig { model: Some("gpt-5-codex".into()), work_dir: dir.clone(), ..Default::default() });
         let last = dir.join("last.txt");
         let first = format!("{:?}", b.build_command(None, None, &last).as_std());
-        assert!(first.contains("\"exec\"") && first.contains("--json") && first.contains("read-only") && first.contains("-m") && !first.contains("resume"));
+        assert!(first.contains("\"exec\"") && first.contains("--json") && first.contains("-m") && !first.contains("resume"));
         let img = dir.join("screen.png");
         let later = format!("{:?}", b.build_command(Some("t-1"), Some(&img), &last).as_std());
         assert!(later.contains("resume") && later.contains("t-1") && later.contains("-i"));
