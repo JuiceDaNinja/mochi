@@ -30,7 +30,11 @@ pub fn load_or_create(dir: &Path) -> Result<LinkTls, String> {
     let cert = CertificateDer::from(pem_body(&std::fs::read_to_string(&cert_path).map_err(|e| format!("read certificate: {e}"))?)?);
     let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(pem_body(&std::fs::read_to_string(&key_path).map_err(|e| format!("read key: {e}"))?)?));
     let fingerprint = fingerprint(&cert);
-    let config = rustls::ServerConfig::builder()
+    // Name the provider explicitly: other crates in the workspace (reqwest) enable rustls's
+    // aws-lc-rs backend too, and with two providers compiled in `builder()` cannot pick one.
+    let config = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .map_err(|e| format!("tls versions: {e}"))?
         .with_no_client_auth()
         .with_single_cert(vec![cert], key)
         .map_err(|e| format!("tls config: {e}"))?;
