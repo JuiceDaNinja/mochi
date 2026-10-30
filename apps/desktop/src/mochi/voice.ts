@@ -1,7 +1,7 @@
-// Voice pipeline. Production: hosted anime-style voice (ElevenLabs / Azure) through
-// HostedTtsVoice with the fixed library cached. Dev and offline fallback: the browser's
-// own speech synthesis, pitched up, or captions only. Narration respects the toggle;
-// fixed lines (always=true) do not.
+// Voice pipeline. Production: Mochi's own voice from the local Kokoro sidecar (tts/), reached
+// through HostedTtsVoice as POST /tts → audio, with the fixed library cached. Fallback while the
+// model downloads, and in builds without the sidecar: the browser's own speech synthesis,
+// pitched up, or captions only. Narration respects the toggle; fixed lines (always=true) do not.
 
 export interface Voice {
   speak(text: string, opts: { always: boolean; interrupt?: boolean }): void;
@@ -81,9 +81,9 @@ export class WebSpeechVoice implements Voice {
 }
 
 /**
- * Hosted TTS. Expects a small local proxy or direct endpoint that takes
- * { text } and returns audio/mpeg. The desktop connector will own the API key
- * (OS keychain) and expose POST http://127.0.0.1:<port>/tts.
+ * HTTP TTS: POST { text } to `endpoint`, play the audio that comes back. Today the endpoint
+ * is the local sidecar (http://127.0.0.1:<port>/tts, WAV); any failure — sidecar still
+ * downloading its model, not bundled, crashed — goes to `fallback` so Mochi always speaks.
  */
 export class HostedTtsVoice implements Voice {
   private on = true;

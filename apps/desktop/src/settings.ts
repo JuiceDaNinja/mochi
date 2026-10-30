@@ -15,6 +15,7 @@ type Settings = {
 };
 type LearnedTarget = { id: number; app_id: string; user_phrase: string; ax_label: string | null; hits: number; misses: number };
 type Probe = { ok: boolean; detail: string };
+type VoiceStatus = { endpoint: string | null; unavailable: string | null };
 type LinkStatus = { port: number | null; fingerprint: string | null; secrets_backend: string; desktop_name: string; connected: string | null; devices: { device_id: string; name: string; paired_at: string }[] };
 type PairRequest = { session: number; device_name: string; code: string };
 
@@ -50,6 +51,7 @@ async function makeApi() {
         forget: (id: number) => invoke<void>("forget_target", { id }),
         wipe: () => invoke<void>("wipe_memory"),
         link: () => invoke<LinkStatus>("link_status"),
+        voice: () => invoke<VoiceStatus>("voice_status"),
         pairAnswer: (session: number, yes: boolean) => invoke<void>("pair_answer", { session, yes }),
         forgetDevice: (device_id: string) => invoke<void>("forget_device", { deviceId: device_id }),
         onPair: async (cb: (r: PairRequest) => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen<PairRequest>("mochi://pair-request", (e) => cb(e.payload)); },
@@ -70,6 +72,7 @@ function browserApi() {
       targets: async () => [{ id: 1, app_id: "chrome.exe", user_phrase: "the reply button", ax_label: "Reply", hits: 3, misses: 0 }],
       forget: async () => {},
       wipe: async () => {},
+      voice: async (): Promise<VoiceStatus> => ({ endpoint: null, unavailable: "browser preview" }),
       link: async (): Promise<LinkStatus> => ({ port: 51234, fingerprint: "3f9a1c77b2e04d5a", secrets_backend: "Windows Credential Manager", desktop_name: "DESKTOP-MOCHI", connected: null, devices: [{ device_id: "ab12", name: "Pixel 9", paired_at: "2026-10-30" }] }),
       pairAnswer: async () => {},
       forgetDevice: async () => {},
@@ -127,6 +130,11 @@ async function render() {
           <label class="check"><input id="local-vision" type="checkbox"> Model can see images (send screenshots)</label>
         </div>
         <div class="row"><button id="probe">Test connection</button><span id="probe-result" class="hint"></span></div>
+      </section>
+
+      <section>
+        <h2>Voice</h2>
+        <p id="voice-line" class="hint"></p>
       </section>
 
       <section>
@@ -245,6 +253,28 @@ async function render() {
   };
   await fillTargets();
   $("#wipe").addEventListener("click", async () => { await api.wipe(); await fillTargets(); });
+
+  // The sidecar's /health says whether Mochi's own voice is ready; while it downloads the
+  // model (~350 MB, first start only) the Windows voice fills in.
+  const fillVoice = async () => {
+    const line = $("#voice-line");
+    const v = await api.voice();
+    if (!v.endpoint) { line.textContent = `Windows voice (Mochi's own voice: ${v.unavailable ?? "not available"}).`; return; }
+    try {
+      const h = await (await fetch(`${v.endpoint}/health`)).json() as { state: string; progress: number; detail: string };
+      switch (h.state) {
+        case "ready": line.textContent = "Mochi's own voice, running on this computer — speech never leaves it."; return;
+        case "downloading": line.textContent = `Downloading Mochi's voice (${Math.round(h.progress * 100)}%, ${h.detail}) — using the Windows voice meanwhile.`; break;
+        case "loading": line.textContent = "Loading Mochi's voice… using the Windows voice meanwhile."; break;
+        case "error": line.textContent = `Mochi's voice could not start (${h.detail}); using the Windows voice.`; return;
+        default: line.textContent = "Starting Mochi's voice… using the Windows voice meanwhile.";
+      }
+    } catch {
+      line.textContent = "Starting Mochi's voice… using the Windows voice meanwhile.";
+    }
+    setTimeout(() => void fillVoice(), 2000);
+  };
+  await fillVoice();
 
   const fillLink = async () => {
     const st = await api.link();

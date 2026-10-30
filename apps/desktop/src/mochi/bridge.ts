@@ -39,6 +39,8 @@ export interface Bridge {
   /** Tell the shell where Mochi's body is so it can toggle click-through. */
   reportBodyRect(r: { x: number; y: number; w: number; h: number }): void;
   monitor(): Promise<MonitorInfo>;
+  /** Where the local voice sidecar answers, or null when there is none in this build. */
+  voiceEndpoint(): Promise<string | null>;
 }
 
 export function hasTauri(): boolean {
@@ -69,6 +71,7 @@ export class TauriBridge implements Bridge {
   cancel() { return invoke<void>("cancel_task"); }
   reportBodyRect(r: { x: number; y: number; w: number; h: number }) { void emit("mochi://body-rect", r); }
   monitor() { return invoke<MonitorInfo>("primary_monitor"); }
+  async voiceEndpoint() { return (await invoke<{ endpoint: string | null }>("voice_status")).endpoint; }
 }
 
 /** Dev stand-in: replays the bible's Gmail scenario with the same pauses the engine produces. */
@@ -103,6 +106,7 @@ export class BrowserBridge implements Bridge {
   async setNarration(on: boolean) { this.narrationOn = on; }
   async cancel() { this.cancelled = true; this.waitingConfirm?.(false); this.waitingTeach?.(); }
   reportBodyRect() {}
+  async voiceEndpoint() { return null; }
   async monitor(): Promise<MonitorInfo> {
     return { id: 0, x: 0, y: 0, w: window.innerWidth, h: window.innerHeight, scale: window.devicePixelRatio, primary: true, work_bottom: window.innerHeight };
   }

@@ -5,6 +5,7 @@
 //! with Windows UI Automation and driven with SendInput when running on Windows.
 
 mod settings;
+mod tts;
 
 use mochi_brain_claude::{ClaudeBrain, ClaudeConfig};
 use mochi_brain_codex::{CodexBrain, CodexConfig};
@@ -53,6 +54,8 @@ enum Platform {
 struct AppState {
     data_dir: PathBuf,
     secrets: mochi_secrets::SharedSecrets,
+    /// Local voice sidecar (Kokoro). Stopped on quit.
+    tts: Arc<tts::Tts>,
     settings: Mutex<Settings>,
     engine: Mutex<Option<EngineHandle>>,
     platform: Mutex<Option<Platform>>,
@@ -343,6 +346,19 @@ fn mirror(ev: &CharacterEvent) -> Option<DesktopMessage> {
 
 // ---------- phone link ----------
 
+#[derive(Serialize, Clone)]
+struct VoiceStatus {
+    /// `http://127.0.0.1:<port>` of the local voice, or None when it is not bundled/running.
+    endpoint: Option<String>,
+    unavailable: Option<String>,
+}
+
+/// Where the local voice lives; the webview polls its `/health` itself.
+#[tauri::command]
+fn voice_status(state: State<'_, AppState>) -> VoiceStatus {
+    VoiceStatus { endpoint: state.tts.endpoint(), unavailable: state.tts.unavailable.clone() }
+}
+
 #[tauri::command]
 fn link_status(state: State<'_, AppState>) -> LinkStatus {
     let link = state.link.lock().unwrap().clone();
@@ -384,6 +400,7 @@ async fn quit_app(app: AppHandle) {
     if let Some(h) = engine { h.cancel(); }
     if let Some(l) = link { l.send(DesktopMessage::Sleepy); }
     tokio::time::sleep(Duration::from_millis(300)).await;
+    app.state::<AppState>().tts.stop();
     app.exit(0);
 }
 
@@ -601,9 +618,17 @@ pub fn run() {
             if settings.brain == BrainKind::Mock {
                 settings.brain = BrainKind::ClaudeCode; // the demo brain is no longer offered in the UI
             }
+            let resource_dir = app.path().resource_dir().unwrap_or_else(|_| data_dir.clone());
+            let tts = Arc::new(tts::Tts::start(&resource_dir, &data_dir));
+            match (&tts.port, &tts.unavailable) {
+                (Some(p), _) => log(&format!("local voice sidecar on port {p}")),
+                (None, Some(why)) => log(&format!("local voice: {why}; using the Windows voice")),
+                _ => {}
+            }
             app.manage(AppState {
                 data_dir,
                 secrets: secrets.clone(),
+                tts,
                 settings: Mutex::new(settings),
                 engine: Mutex::new(None),
                 platform: Mutex::new(None),
@@ -632,6 +657,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             primary_monitor,
+            voice_status,
             get_settings,
             set_settings,
             probe_brain,
