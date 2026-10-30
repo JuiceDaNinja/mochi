@@ -18,6 +18,7 @@ mochi-brain-claude = { path = "../../../crates/mochi-brain-claude" }
 mochi-brain-local = { path = "../../../crates/mochi-brain-local" }
 mochi-brain-codex = { path = "../../../crates/mochi-brain-codex" }
 mochi-platform-windows = { path = "../../../crates/mochi-platform-windows" }
+mochi-secrets = { path = "../../../crates/mochi-secrets" }
 mochi-link = { path = "../../../crates/mochi-link" }
 hostname = "0.4"
 tauri = { version = "2", features = [] }

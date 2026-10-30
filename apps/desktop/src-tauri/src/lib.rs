@@ -52,6 +52,7 @@ enum Platform {
 
 struct AppState {
     data_dir: PathBuf,
+    secrets: mochi_secrets::SharedSecrets,
     settings: Mutex<Settings>,
     engine: Mutex<Option<EngineHandle>>,
     platform: Mutex<Option<Platform>>,
@@ -69,6 +70,8 @@ struct LinkStatus {
     port: Option<u16>,
     /// Short form of the certificate fingerprint, for the Settings panel.
     fingerprint: Option<String>,
+    /// Where secrets are kept ("Windows Credential Manager", …).
+    secrets_backend: String,
     desktop_name: String,
     connected: Option<String>,
     devices: Vec<mochi_link::PairedDevice>,
@@ -123,7 +126,7 @@ fn get_settings(state: State<'_, AppState>) -> Settings {
 
 #[tauri::command]
 fn set_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
-    settings.save(&state.data_dir).map_err(|e| e.to_string())?;
+    settings.save(&state.data_dir, &state.secrets).map_err(|e| e.to_string())?;
     *state.settings.lock().unwrap() = settings.clone();
     if let Some(h) = state.engine.lock().unwrap().as_ref() {
         h.set_narration(settings.narration);
@@ -346,6 +349,7 @@ fn link_status(state: State<'_, AppState>) -> LinkStatus {
     LinkStatus {
         port: *state.link_port.lock().unwrap(),
         fingerprint: state.link_fingerprint.lock().unwrap().as_ref().map(|f| f.chars().take(16).collect()),
+        secrets_backend: state.secrets.backend_name().to_string(),
         desktop_name: hostname::get().map(|h| h.to_string_lossy().to_string()).unwrap_or_else(|_| "Mochi desktop".into()),
         connected: link.as_ref().and_then(|l| l.connected()).map(|c| c.1),
         devices: link.as_ref().map(|l| l.devices()).unwrap_or_default(),
@@ -387,7 +391,8 @@ async fn quit_app(app: AppHandle) {
 fn spawn_link(app: AppHandle, data_dir: PathBuf) {
     tauri::async_runtime::spawn(async move {
         let (tx, mut rx) = mpsc::channel::<LinkEvent>(64);
-        let cfg = LinkConfig { devices_path: data_dir.join("devices.json"), ..Default::default() };
+        let secrets = app.state::<AppState>().secrets.clone();
+        let cfg = LinkConfig { devices_path: data_dir.join("devices.json"), secrets: Some(secrets), ..Default::default() };
         let link = match Link::start(cfg, tx).await {
             Ok(l) => l,
             Err(e) => { log(&format!("phone link not started: {e}")); return; }
@@ -590,12 +595,15 @@ pub fn run() {
             let _ = LOG_PATH.set(data_dir.join("mochi.log"));
             log(&format!("Mochi {} starting; data dir {}", env!("CARGO_PKG_VERSION"), data_dir.display()));
             let memory = Arc::new(Memory::open(data_dir.join("mochi.sqlite")).expect("open memory db"));
-            let mut settings = Settings::load(&data_dir);
+            let secrets = mochi_secrets::open_default(&data_dir);
+            log(&format!("secrets: {}", secrets.backend_name()));
+            let mut settings = Settings::load(&data_dir, &secrets);
             if settings.brain == BrainKind::Mock {
                 settings.brain = BrainKind::ClaudeCode; // the demo brain is no longer offered in the UI
             }
             app.manage(AppState {
                 data_dir,
+                secrets: secrets.clone(),
                 settings: Mutex::new(settings),
                 engine: Mutex::new(None),
                 platform: Mutex::new(None),

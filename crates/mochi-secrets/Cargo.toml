@@ -1,0 +1,12 @@
+[package]
+name = "mochi-secrets"
+description = "Where Mochi keeps secrets: Windows Credential Manager / macOS Keychain, with a file fallback for other platforms and an in-memory store for tests."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }

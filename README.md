@@ -15,6 +15,7 @@ mochi/
 │  ├─ mochi-brain-codex/       OpenAI Codex CLI adapter (codex exec --json, AGENTS.md instructions, resumed thread per task).
 │  ├─ mochi-brain-mock/        Scripted scenarios + fake desktop for demos and tests.
 │  ├─ mochi-platform-windows/  UI Automation tree + GDI screenshot (Perception), SendInput (Actuator). Stubs elsewhere.
+│  ├─ mochi-secrets/           Secret store: Windows Credential Manager / macOS Keychain (keyring), file fallback, in-memory for tests.
 │  └─ mochi-link/              Phone link: TLS WebSocket server (self-signed cert, pinned by the phone), mDNS, X25519 pairing with a 6-digit code on both screens, HMAC auth, keepalive.
 └─ apps/
    ├─ android/           Kotlin + Compose. Finds the desktop, pairs, talks, mirrors Mochi's face, Yes/No.
@@ -106,8 +107,8 @@ pnpm test               # vitest (state machine) + cargo test (gate, memory, eng
 
 ## Phase 4 checklist (hardening)
 
-- [x] TLS on the phone link — `wss://` with a self-signed certificate generated on first run (`link-cert.pem` / `link-key.pem` beside `devices.json`). The phone pins its SHA-256 fingerprint at pairing, and the fingerprint is mixed into the 6-digit code so a man-in-the-middle during pairing shows two different codes. Phones paired before this must pair again once.
-- [ ] Move the pairing secret and API keys into Windows Credential Manager (desktop) — the phone side already uses EncryptedSharedPreferences.
+- [x] TLS on the phone link — `wss://` with a self-signed certificate generated on first run (`link-cert.pem` beside `devices.json`; the private key is in the secret store). The phone pins its SHA-256 fingerprint at pairing, and the fingerprint is mixed into the 6-digit code so a man-in-the-middle during pairing shows two different codes. Phones paired before this must pair again once.
+- [x] Secrets in Windows Credential Manager (desktop) — `crates/mochi-secrets`: the phone pairing secret (`Mochi/phone-secret/<id>`), the local-AI API key (`Mochi/local-api-key`) and the link's TLS private key (`Mochi/link-tls-key`) are generic credentials; `devices.json` and `settings.json` no longer contain them, and values found inline in older files are moved over on first start. macOS uses the Keychain; other platforms fall back to an owner-only `secrets.json`. The phone side already uses EncryptedSharedPreferences.
 - [ ] Hosted TTS proxy in the connector (`/tts`) and the anime voice; Rive assets for both faces; Porcupine wake word.
 - [ ] Per-app allow list UI (the memory already has `app_setting.allowed`), global hotkey for the emergency stop.
 - [ ] macOS + iOS, Codex CLI adapter, pixel-fallback perception for apps with no accessibility tree.
