@@ -264,7 +264,9 @@ async fn begin_task(app: &AppHandle, task: String, scenario: Option<String>) -> 
             *s.platform.lock().unwrap() = None;
         }
         let _ = done.emit("mochi://task-finished", format!("{outcome:?}"));
-        if let Some(l) = done.state::<AppState>().link.lock().unwrap().clone() {
+        let link = done.state::<AppState>().link.lock().unwrap().clone();
+        if let Some(l) = link {
+            tokio::time::sleep(Duration::from_millis(1800)).await;
             l.send(DesktopMessage::State { state: CharacterState::Idle, line: None });
         }
     });
@@ -283,7 +285,10 @@ fn mirror(ev: &CharacterEvent) -> Option<DesktopMessage> {
         CharacterEvent::Learning => DesktopMessage::State { state: S::Learning, line: None },
         CharacterEvent::ConfirmRequest { text } => DesktopMessage::ConfirmRequest { text: text.clone() },
         CharacterEvent::ConfirmAnswered { .. } => DesktopMessage::State { state: S::Working, line: None },
-        CharacterEvent::Done { summary, .. } => DesktopMessage::Done { summary: summary.clone() },
+        CharacterEvent::Done { summary, kind } => DesktopMessage::Done {
+            summary: summary.clone(),
+            kind: if matches!(kind, DoneKind::Heart) { "heart".into() } else { "thumbs_up".into() },
+        },
         CharacterEvent::Cancel => DesktopMessage::State { state: S::Idle, line: None },
         CharacterEvent::MoveTo { .. } | CharacterEvent::Gesture { .. } => return None,
     })

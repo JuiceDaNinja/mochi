@@ -57,7 +57,7 @@ sealed class DesktopMessage {
     data class State(val state: MochiState, val line: String?) : DesktopMessage()
     data class Narrate(val text: String, val audioUrl: String?) : DesktopMessage()
     data class ConfirmRequest(val text: String) : DesktopMessage()
-    data class Done(val summary: String) : DesktopMessage()
+    data class Done(val summary: String, val kind: String) : DesktopMessage()
     object Sleepy : DesktopMessage()
     object Ping : DesktopMessage()
     data class Unknown(val type: String) : DesktopMessage()
@@ -75,7 +75,7 @@ sealed class DesktopMessage {
                 "state" -> State(MochiState.parse(o.optString("state")), if (o.has("line")) o.optString("line") else null)
                 "narrate" -> Narrate(o.optString("text"), if (o.has("audio_url")) o.optString("audio_url") else null)
                 "confirm_request" -> ConfirmRequest(o.optString("text"))
-                "done" -> Done(o.optString("summary"))
+                "done" -> Done(o.optString("summary"), o.optString("kind", "thumbs_up"))
                 "sleepy" -> Sleepy
                 "ping" -> Ping
                 else -> Unknown(t)

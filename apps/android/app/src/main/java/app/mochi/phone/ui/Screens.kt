@@ -7,6 +7,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -123,7 +131,10 @@ fun HomeScreen(ui: LinkUi, listening: Boolean, onTalk: () -> Unit, onAnswer: (Bo
             Text(ui.caption ?: hintFor(ui.mochi), Modifier.padding(16.dp).fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 18.sp)
         }
         Spacer(Modifier.height(12.dp))
-        MochiFace(if (listening) MochiState.LISTENING else ui.mochi, Modifier.fillMaxWidth(0.7f).aspectRatio(120f / 112f))
+        Box(Modifier.fillMaxWidth(0.7f).aspectRatio(120f / 112f)) {
+            MochiFace(if (listening) MochiState.LISTENING else ui.mochi, Modifier.fillMaxSize())
+            if (ui.gesture != null) GestureBurst(ui.gesture, Modifier.align(Alignment.TopEnd))
+        }
         Spacer(Modifier.weight(1f))
         if (ui.confirmText != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -141,6 +152,20 @@ fun HomeScreen(ui: LinkUi, listening: Boolean, onTalk: () -> Unit, onAnswer: (Bo
         if (ui.mochi != MochiState.IDLE) TextButton(onClick = onStop) { Text("Stop", color = Color(0xFFA04050)) }
         Spacer(Modifier.height(8.dp))
     }
+}
+
+/** The desktop's heart / thumbs-up, floating up beside the face for a moment. */
+@Composable
+private fun GestureBurst(kind: String, modifier: Modifier = Modifier) {
+    val t = rememberInfiniteTransition(label = "burst")
+    val k by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart), label = "k")
+    val rise = (k * 40).dp
+    val alpha = if (k < 0.2f) k / 0.2f else if (k > 0.75f) (1f - k) / 0.25f else 1f
+    Text(
+        if (kind == "heart") "\uD83D\uDC97" else "\uD83D\uDC4D",
+        modifier.offset(x = (-8).dp, y = -rise).alpha(alpha),
+        fontSize = 40.sp,
+    )
 }
 
 private fun hintFor(s: MochiState) = when (s) {

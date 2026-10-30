@@ -48,10 +48,15 @@ pub enum DesktopMessage {
     State { state: CharacterState, #[serde(default, skip_serializing_if = "Option::is_none")] line: Option<String> },
     Narrate { text: String, #[serde(default, skip_serializing_if = "Option::is_none")] audio_url: Option<String> },
     ConfirmRequest { text: String },
-    Done { summary: String },
+    /// `kind`: "heart" when the task sent the user's own words, "thumbs_up" otherwise.
+    Done { summary: String, #[serde(default = "default_done_kind")] kind: String },
     /// The desktop is closing or the user ended the session; the phone shows Mochi asleep.
     Sleepy,
     Ping,
+}
+
+fn default_done_kind() -> String {
+    "thumbs_up".into()
 }
 
 /// Six digits derived deterministically from the shared secret so both screens agree.

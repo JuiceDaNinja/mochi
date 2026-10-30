@@ -23,6 +23,8 @@ data class LinkUi(
     val caption: String? = null,
     val confirmText: String? = null,
     val error: String? = null,
+    /** "heart" or "thumbs_up" while a success gesture should play; null otherwise. */
+    val gesture: String? = null,
     /** Last few link events, newest last; shown on the pairing screen for troubleshooting. */
     val trail: List<String> = emptyList(),
 ) {
@@ -44,6 +46,7 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
     private var pairing: PendingPair? = null
     private var target: Desktop? = null
     private var wantConnected = false
+    private var successUntil = 0L
 
     private class PendingPair(val privateKey: ByteArray, var secret: ByteArray? = null, var phoneApproved: Boolean = false)
 
@@ -160,10 +163,20 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
                 _ui.update { it.copy(phase = LinkUi.Phase.Connected, mochi = MochiState.IDLE, error = null) }
             }
             DesktopMessage.AuthFailed -> { store.clear(); _ui.update { it.copy(phase = LinkUi.Phase.Disconnected, error = "This computer no longer knows this phone. Pair again.") }; wantConnected = false }
-            is DesktopMessage.State -> _ui.update { it.copy(mochi = m.state, caption = m.line ?: it.caption, confirmText = if (m.state == MochiState.CONFIRM) it.confirmText else null) }
+            is DesktopMessage.State -> {
+                if (m.state == MochiState.IDLE && System.currentTimeMillis() < successUntil) {
+                    scope.launch { delay(successUntil - System.currentTimeMillis()); _ui.update { it.copy(mochi = MochiState.IDLE) } }
+                } else {
+                    _ui.update { it.copy(mochi = m.state, caption = m.line ?: it.caption, confirmText = if (m.state == MochiState.CONFIRM) it.confirmText else null) }
+                }
+            }
             is DesktopMessage.Narrate -> _ui.update { it.copy(caption = m.text) }
             is DesktopMessage.ConfirmRequest -> _ui.update { it.copy(mochi = MochiState.CONFIRM, caption = m.text, confirmText = m.text) }
-            is DesktopMessage.Done -> _ui.update { it.copy(mochi = MochiState.SUCCESS, caption = m.summary, confirmText = null) }
+            is DesktopMessage.Done -> {
+                _ui.update { it.copy(mochi = MochiState.SUCCESS, caption = m.summary, confirmText = null, gesture = m.kind) }
+                successUntil = System.currentTimeMillis() + 1_800
+                scope.launch { delay(1_500); _ui.update { it.copy(gesture = null) } }
+            }
             DesktopMessage.Sleepy -> _ui.update { it.copy(mochi = MochiState.IDLE, caption = "Mochi's asleep on the computer…") }
             DesktopMessage.Ping -> send(PhoneMessage.Pong)
             is DesktopMessage.Unknown -> {}
