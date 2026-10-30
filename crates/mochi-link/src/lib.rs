@@ -1,8 +1,9 @@
 //! The desktop side of the phone link.
 //!
-//! One WebSocket server on the LAN, advertised with mDNS as `_mochi._tcp`. A new phone
-//! pairs with an X25519 key exchange; both screens show a 6-digit code derived from the
-//! shared secret and **both** must approve. Later connections authenticate with an HMAC
+//! One TLS WebSocket server (`wss://`) on the LAN, advertised with mDNS as `_mochi._tcp`.
+//! The certificate is self-signed and pinned by the phone (see `tls.rs`). A new phone pairs
+//! with an X25519 key exchange; both screens show a 6-digit code derived from the shared
+//! secret **and** the certificate fingerprint, and **both** must approve. Later connections authenticate with an HMAC
 //! over a fresh nonce. The link stays open until the network drops; pings every 5 s,
 //! three misses close the socket and the phone reconnects on its own.
 //!
@@ -10,6 +11,7 @@
 
 pub mod crypto;
 mod devices;
+pub mod tls;
 
 pub use crypto::PhoneCrypto;
 pub use devices::{DeviceStore, PairedDevice};
@@ -25,7 +27,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::tungstenite::Message;
+
+type Ws = tokio_tungstenite::WebSocketStream<TlsStream<TcpStream>>;
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 /// Mochi's usual port. The phone also tries this first when a saved address is stale.
@@ -37,6 +42,8 @@ pub enum LinkError {
     Io(#[from] std::io::Error),
     #[error("mdns: {0}")]
     Mdns(String),
+    #[error("tls: {0}")]
+    Tls(String),
 }
 
 #[derive(Debug, Clone)]
@@ -45,7 +52,7 @@ pub struct LinkConfig {
     pub desktop_name: String,
     /// Preferred port; 0 picks a free one. If the preferred port is taken, a free one is used.
     pub port: u16,
-    /// Where paired devices are stored (JSON).
+    /// Where paired devices are stored (JSON). The TLS certificate and key live beside it.
     pub devices_path: PathBuf,
     pub advertise: bool,
     pub ping_interval: Duration,
@@ -116,6 +123,8 @@ impl LinkHandle {
 
 pub struct Link {
     pub addr: SocketAddr,
+    /// SHA-256 of the desktop certificate (hex); the phone pins this at pairing.
+    pub fingerprint: String,
     pub handle: LinkHandle,
     _mdns: Option<mdns_sd::ServiceDaemon>,
 }
@@ -140,6 +149,10 @@ impl Link {
             Err(e) => return Err(e.into()),
         };
         let addr = listener.local_addr()?;
+        let tls_dir = cfg.devices_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+        let tls = tls::load_or_create(&tls_dir).map_err(LinkError::Tls)?;
+        let fingerprint = tls.fingerprint.clone();
+        let acceptor = tls.acceptor;
         let (out, _) = broadcast::channel(64);
         let handle = LinkHandle {
             out,
@@ -147,32 +160,39 @@ impl Link {
             devices: Arc::new(DeviceStore::open(&cfg.devices_path)),
             connected: Arc::new(Mutex::new(None)),
         };
-        let mdns = if cfg.advertise { advertise(&cfg.desktop_name, addr.port()).ok() } else { None };
+        let mdns = if cfg.advertise { advertise(&cfg.desktop_name, addr.port(), &fingerprint).ok() } else { None };
 
         let h = handle.clone();
         let cfg = Arc::new(cfg);
+        let fp = Arc::new(fingerprint.clone());
         let next_session = Arc::new(AtomicU64::new(1));
         tokio::spawn(async move {
             loop {
                 let Ok((stream, peer)) = listener.accept().await else { break };
-                let (h, cfg, ev) = (h.clone(), cfg.clone(), events.clone());
+                let (h, cfg, ev, fp, acceptor) = (h.clone(), cfg.clone(), events.clone(), fp.clone(), acceptor.clone());
                 let session = next_session.fetch_add(1, Ordering::Relaxed);
                 tokio::spawn(async move {
-                    if let Err(e) = serve(stream, peer, session, h, cfg, ev).await {
+                    let stream = match tokio::time::timeout(Duration::from_secs(10), acceptor.accept(stream)).await {
+                        Ok(Ok(s)) => s,
+                        Ok(Err(e)) => { eprintln!("[mochi-link] {peer}: tls handshake failed: {e}"); return; }
+                        Err(_) => { eprintln!("[mochi-link] {peer}: tls handshake timed out"); return; }
+                    };
+                    if let Err(e) = serve(stream, peer, session, h, cfg, &fp, ev).await {
                         eprintln!("[mochi-link] {peer}: {e}");
                     }
                 });
             }
         });
-        Ok(Link { addr, handle, _mdns: mdns })
+        Ok(Link { addr, fingerprint, handle, _mdns: mdns })
     }
 }
 
-fn advertise(name: &str, port: u16) -> Result<mdns_sd::ServiceDaemon, LinkError> {
+/// TXT records: `name`, `v=2` (TLS), and `fp` so a phone can show which desktop it is about to trust.
+fn advertise(name: &str, port: u16, fingerprint: &str) -> Result<mdns_sd::ServiceDaemon, LinkError> {
     let daemon = mdns_sd::ServiceDaemon::new().map_err(|e| LinkError::Mdns(e.to_string()))?;
     let instance = name.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == ' ').collect::<String>();
     let host = format!("{}.local.", instance.replace(' ', "-").to_lowercase());
-    let info = mdns_sd::ServiceInfo::new(SERVICE_TYPE, &instance, &host, (), port, &[("name", name), ("v", "1")][..])
+    let info = mdns_sd::ServiceInfo::new(SERVICE_TYPE, &instance, &host, (), port, &[("name", name), ("v", "2"), ("fp", fingerprint)][..])
         .map_err(|e| LinkError::Mdns(e.to_string()))?
         .enable_addr_auto();
     daemon.register(info).map_err(|e| LinkError::Mdns(e.to_string()))?;
@@ -185,7 +205,7 @@ fn nonce() -> [u8; 32] {
     n
 }
 
-async fn serve(stream: TcpStream, _peer: SocketAddr, session: u64, h: LinkHandle, cfg: Arc<LinkConfig>, ev: mpsc::Sender<LinkEvent>) -> Result<(), String> {
+async fn serve(stream: TlsStream<TcpStream>, _peer: SocketAddr, session: u64, h: LinkHandle, cfg: Arc<LinkConfig>, fingerprint: &str, ev: mpsc::Sender<LinkEvent>) -> Result<(), String> {
     let mut ws = tokio_tungstenite::accept_async(stream).await.map_err(|e| e.to_string())?;
 
     let nonce = nonce();
@@ -209,7 +229,7 @@ async fn serve(stream: TcpStream, _peer: SocketAddr, session: u64, h: LinkHandle
         }
         PhoneMessage::PairRequest { device_name, public_key_b64 } => {
             let (secret, our_pub) = crypto::desktop_pairing(&public_key_b64).ok_or("bad phone public key")?;
-            let code = pairing_code(&secret);
+            let code = tls::pairing_code(&secret, fingerprint);
             send(&mut ws, &DesktopMessage::PairChallenge { desktop_name: cfg.desktop_name.clone(), code: code.clone(), desktop_public_key_b64: our_pub }).await?;
             let (tx, rx) = oneshot::channel();
             // One phone at a time: a new request supersedes any pairing still waiting
@@ -271,7 +291,7 @@ async fn serve(stream: TcpStream, _peer: SocketAddr, session: u64, h: LinkHandle
     result
 }
 
-async fn session_loop(ws: &mut tokio_tungstenite::WebSocketStream<TcpStream>, h: &LinkHandle, cfg: &LinkConfig, ev: &mpsc::Sender<LinkEvent>) -> Result<(), String> {
+async fn session_loop(ws: &mut Ws, h: &LinkHandle, cfg: &LinkConfig, ev: &mpsc::Sender<LinkEvent>) -> Result<(), String> {
     let mut out = h.out.subscribe();
     let mut ping = tokio::time::interval(cfg.ping_interval);
     ping.tick().await; // the first tick fires immediately; skip it
@@ -310,13 +330,13 @@ async fn session_loop(ws: &mut tokio_tungstenite::WebSocketStream<TcpStream>, h:
     }
 }
 
-async fn send(ws: &mut tokio_tungstenite::WebSocketStream<TcpStream>, m: &DesktopMessage) -> Result<(), String> {
+async fn send(ws: &mut Ws, m: &DesktopMessage) -> Result<(), String> {
     let s = serde_json::to_string(m).unwrap();
     ws.send(Message::Text(s.into())).await.map_err(|e| e.to_string())
 }
 
 /// Next phone message, or None when the socket closed cleanly.
-async fn read_phone(ws: &mut tokio_tungstenite::WebSocketStream<TcpStream>) -> Option<Result<PhoneMessage, String>> {
+async fn read_phone(ws: &mut Ws) -> Option<Result<PhoneMessage, String>> {
     loop {
         match ws.next().await {
             None => return None,
@@ -337,9 +357,28 @@ async fn read_phone(ws: &mut tokio_tungstenite::WebSocketStream<TcpStream>) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio_tungstenite::connect_async;
 
-    type Client = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>;
+    type Client = tokio_tungstenite::WebSocketStream<tokio_rustls::client::TlsStream<TcpStream>>;
+
+    /// The phone's trust model: accept whatever certificate is presented and remember its
+    /// fingerprint (pinning is the phone's job after pairing). Returns the fingerprint seen.
+    #[derive(Debug)]
+    struct Tofu(std::sync::Mutex<Option<String>>);
+    impl rustls::client::danger::ServerCertVerifier for Tofu {
+        fn verify_server_cert(&self, end_entity: &rustls_pki_types::CertificateDer<'_>, _: &[rustls_pki_types::CertificateDer<'_>], _: &rustls_pki_types::ServerName<'_>, _: &[u8], _: rustls_pki_types::UnixTime) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+            *self.0.lock().unwrap() = Some(tls::fingerprint(end_entity));
+            Ok(rustls::client::danger::ServerCertVerified::assertion())
+        }
+        fn verify_tls12_signature(&self, _: &[u8], _: &rustls_pki_types::CertificateDer<'_>, _: &rustls::DigitallySignedStruct) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        }
+        fn verify_tls13_signature(&self, _: &[u8], _: &rustls_pki_types::CertificateDer<'_>, _: &rustls::DigitallySignedStruct) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        }
+        fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+            rustls::crypto::ring::default_provider().signature_verification_algorithms.supported_schemes()
+        }
+    }
 
     async fn start(ping: Duration) -> (Link, mpsc::Receiver<LinkEvent>, tempfile_path::Path) {
         let dir = tempfile_path::Path::new();
@@ -353,8 +392,23 @@ mod tests {
         (link, rx, dir)
     }
     async fn connect(link: &Link) -> Client {
-        let (ws, _) = connect_async(format!("ws://127.0.0.1:{}", link.addr.port())).await.unwrap();
+        let (ws, seen) = connect_seeing(link).await;
+        assert_eq!(seen, link.fingerprint, "the phone sees the desktop's own certificate");
         ws
+    }
+    /// `wss://` with trust-on-first-use; also returns the certificate fingerprint presented.
+    async fn connect_seeing(link: &Link) -> (Client, String) {
+        let verifier = Arc::new(Tofu(Mutex::new(None)));
+        let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions().unwrap()
+            .dangerous().with_custom_certificate_verifier(verifier.clone())
+            .with_no_client_auth();
+        let tcp = TcpStream::connect(("127.0.0.1", link.addr.port())).await.unwrap();
+        let name = rustls_pki_types::ServerName::try_from("mochi.local").unwrap();
+        let tls = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.unwrap();
+        let (ws, _) = tokio_tungstenite::client_async(format!("wss://127.0.0.1:{}/", link.addr.port()), tls).await.unwrap();
+        let seen = verifier.0.lock().unwrap().clone().unwrap();
+        (ws, seen)
     }
     async fn recv(ws: &mut Client) -> DesktopMessage {
         loop {
@@ -403,7 +457,8 @@ mod tests {
         let DesktopMessage::PairChallenge { desktop_name, code, desktop_public_key_b64 } = recv(&mut ws).await else { panic!("expected challenge") };
         assert_eq!(desktop_name, "DESK");
         let secret = phone.shared_secret(&desktop_public_key_b64).unwrap();
-        assert_eq!(code, pairing_code(&secret), "both screens compute the same code from the shared secret");
+        assert_eq!(code, tls::pairing_code(&secret, &link.fingerprint), "both screens compute the same code from the shared secret and the pinned certificate");
+        assert_ne!(code, tls::pairing_code(&secret, "0000"), "a different certificate in the middle would show a different code");
 
         let LinkEvent::PairRequest { session, device_name, code: shown } = ev(&mut events).await else { panic!() };
         assert_eq!((device_name.as_str(), shown.as_str()), ("Pixel", code.as_str()));

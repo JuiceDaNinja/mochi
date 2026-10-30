@@ -12,7 +12,9 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
 
 /** Everything the UI needs to draw, in one value. */
 data class LinkUi(
@@ -35,9 +37,19 @@ data class LinkUi(
  * The phone's side of the link. Pairs once, then reconnects with HMAC auth whenever the
  * network comes back; the user never re-approves on the same phone + desktop pair.
  * Both apps have to be running: there is no wake-on-LAN and no background service.
+ *
+ * The socket is `wss://`: the desktop's self-signed certificate is pinned at pairing
+ * (see [PinnedTrust]), so later sessions are encrypted *and* known to be that desktop.
  */
 class DesktopLink(private val store: PairStore, private val scope: CoroutineScope, private val deviceName: String) {
-    private val client = OkHttpClient.Builder().pingInterval(0, TimeUnit.SECONDS).readTimeout(0, TimeUnit.SECONDS).build()
+    private val trust = PinnedTrust { store.load()?.certFingerprint }
+    private val client = OkHttpClient.Builder()
+        .pingInterval(0, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.SECONDS)
+        .sslSocketFactory(SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), SecureRandom()) }.socketFactory, trust)
+        // The desktop is reached by IP and its certificate names "mochi.local"; identity comes from the pin, not the name.
+        .hostnameVerifier { _, _ -> true }
+        .build()
     private val _ui = MutableStateFlow(LinkUi())
     val ui: StateFlow<LinkUi> = _ui
 
@@ -48,7 +60,7 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
     private var wantConnected = false
     private var successUntil = 0L
 
-    private class PendingPair(val privateKey: ByteArray, var secret: ByteArray? = null, var phoneApproved: Boolean = false)
+    private class PendingPair(val privateKey: ByteArray, var secret: ByteArray? = null, var certFingerprint: String? = null, var phoneApproved: Boolean = false)
 
     /** Connect to a known desktop (auth) or start pairing with a new one. */
     fun connect(desktop: Desktop) {
@@ -91,12 +103,12 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
         socket?.let { old -> socket = null; old.cancel(); note("replaced an older socket") }
         pairing = null
         _ui.update { it.copy(phase = LinkUi.Phase.Connecting, desktopName = d.name, error = null) }
-        val req = Request.Builder().url("ws://${d.host}:${d.port}/").build()
+        val req = Request.Builder().url("wss://${d.host}:${d.port}/").build()
         socket = client.newWebSocket(req, listener)
     }
 
     private val listener = object : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) { note("socket open") }
+        override fun onOpen(webSocket: WebSocket, response: Response) { note("socket open (tls ${trust.lastSeen?.take(8) ?: "?"})") }
         override fun onMessage(webSocket: WebSocket, text: String) {
             if (webSocket !== socket || text.length > MAX_FRAME_BYTES) return
             val m = try { DesktopMessage.parse(text) } catch (e: Exception) { note("bad frame: ${e.message}"); return }
@@ -139,19 +151,23 @@ class DesktopLink(private val store: PairStore, private val scope: CoroutineScop
             is DesktopMessage.PairChallenge -> {
                 val p = pairing ?: return
                 p.secret = Crypto.sharedSecret(p.privateKey, m.desktopPublicKeyB64)
-                val code = Crypto.pairingCode(p.secret!!)
-                // Show OUR code; if it differs from the desktop's, someone is in the middle.
+                val fp = trust.lastSeen ?: run { note("no certificate seen; cannot pair"); return }
+                p.certFingerprint = fp
+                val code = Crypto.pairingCode(p.secret!!, fp)
+                // Show OUR code, computed from OUR secret and the certificate WE saw; if it
+                // differs from the desktop's, someone is in the middle.
                 _ui.update { it.copy(phase = LinkUi.Phase.Pairing, desktopName = m.desktopName, pairCode = code) }
             }
             is DesktopMessage.Paired -> {
                 // Move on first so the screen never sticks; then persist.
                 val p = pairing
                 val secret = p?.secret
+                val fp = p?.certFingerprint
                 pairing = null
                 _ui.update { it.copy(phase = LinkUi.Phase.Connected, pairCode = null, mochi = MochiState.IDLE, caption = "Paired with ${it.desktopName}", error = null) }
-                if (secret == null || d == null) { note("paired but no secret/target to save"); return }
+                if (secret == null || fp == null || d == null) { note("paired but no secret/certificate/target to save"); return }
                 try {
-                    store.save(Pairing(_ui.value.desktopName, d.host, d.port, m.deviceId, secret))
+                    store.save(Pairing(_ui.value.desktopName, d.host, d.port, m.deviceId, secret, fp))
                 } catch (e: Exception) {
                     note("save failed: ${e.message}")
                     _ui.update { it.copy(error = "Paired, but could not save the pairing: ${e.message}") }
