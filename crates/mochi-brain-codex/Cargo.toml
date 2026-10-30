@@ -1,0 +1,17 @@
+[package]
+name = "mochi-brain-codex"
+description = "Brain adapter: OpenAI Codex CLI in non-interactive mode (codex exec --json)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mochi-core = { path = "../mochi-core" }
+async-trait.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64 = "0.22"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

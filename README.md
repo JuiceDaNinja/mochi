@@ -12,6 +12,7 @@ mochi/
 │  ├─ mochi-core/              Brain trait, prompt + parser, task loop, safety gate, SQLite memory, phone protocol.
 │  ├─ mochi-brain-claude/      Claude Code CLI adapter (claude -p, stream-json in/out, resumed session per task).
 │  ├─ mochi-brain-local/       OpenAI-compatible adapter for a model on your LAN (Ollama, LM Studio, llama.cpp, vLLM).
+│  ├─ mochi-brain-codex/       OpenAI Codex CLI adapter (codex exec --json, AGENTS.md instructions, resumed thread per task).
 │  ├─ mochi-brain-mock/        Scripted scenarios + fake desktop for demos and tests.
 │  ├─ mochi-platform-windows/  UI Automation tree + GDI screenshot (Perception), SendInput (Actuator). Stubs elsewhere.
 │  └─ mochi-link/              Phone link: WebSocket server, mDNS, X25519 pairing with a 6-digit code on both screens, HMAC auth, keepalive.
@@ -47,6 +48,7 @@ When Mochi cries that it can't find something, click the thing you meant and it 
 **Settings…** picks the brain:
 
 - **Claude Code** — needs the CLI installed and signed in once: `npm i -g @anthropic-ai/claude-code`, then run `claude` in any terminal to log in. Mochi runs it headless with no tools and a 1-turn limit; screenshots are attached when a window exposes too few controls.
+- **Codex CLI** — `npm i -g @openai/codex`, then `codex login` once (ChatGPT account or OpenAI key). Mochi runs `codex exec` with a read-only sandbox in its own folder.
 - **Local AI** — host, port, model name; "Test connection" lists the server's models. Tick "can see images" only for a multimodal model.
 - **Demo** — the scripted scenario.
 

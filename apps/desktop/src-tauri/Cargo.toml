@@ -16,6 +16,7 @@ mochi-core = { path = "../../../crates/mochi-core" }
 mochi-brain-mock = { path = "../../../crates/mochi-brain-mock" }
 mochi-brain-claude = { path = "../../../crates/mochi-brain-claude" }
 mochi-brain-local = { path = "../../../crates/mochi-brain-local" }
+mochi-brain-codex = { path = "../../../crates/mochi-brain-codex" }
 mochi-platform-windows = { path = "../../../crates/mochi-platform-windows" }
 mochi-link = { path = "../../../crates/mochi-link" }
 hostname = "0.4"

@@ -7,6 +7,7 @@
 mod settings;
 
 use mochi_brain_claude::{ClaudeBrain, ClaudeConfig};
+use mochi_brain_codex::{CodexBrain, CodexConfig};
 use mochi_brain_local::{LocalBrain, LocalConfig};
 use mochi_brain_mock::{FakeDesktop, MockBrain};
 use mochi_core::engine::EngineConfig;
@@ -161,6 +162,37 @@ async fn probe_brain(state: State<'_, AppState>) -> Result<ProbeResult, String> 
                 Err(_) => ProbeResult { ok: false, detail: "The test prompt timed out after 60 s. Is Claude Code signed in? Run `claude` once in a terminal.".into() },
             }
         }
+        BrainKind::Codex => {
+            let version = match tokio::process::Command::new(&s.codex.binary).arg("--version").output().await {
+                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+                Ok(o) => return Ok(ProbeResult { ok: false, detail: format!("`{} --version` failed: {}", s.codex.binary, String::from_utf8_lossy(&o.stderr).trim()) }),
+                Err(e) => return Ok(ProbeResult { ok: false, detail: format!("Cannot start `{}`: {e}. Install Codex CLI (npm i -g @openai/codex) and run `codex login` once.", s.codex.binary) }),
+            };
+            let work = state.data_dir.join("codex");
+            let _ = std::fs::create_dir_all(&work);
+            let mut cmd = tokio::process::Command::new(&s.codex.binary);
+            cmd.args(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "-C"]).arg(&work).args(["-o"]).arg(work.join("probe.txt")).args(["Reply with exactly: OK"]);
+            if let Some(m) = s.codex.model.clone().filter(|m| !m.trim().is_empty()) { cmd.args(["-m", &m]); }
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x0800_0000);
+            }
+            match tokio::time::timeout(Duration::from_secs(90), cmd.output()).await {
+                Ok(Ok(o)) => {
+                    let reply = std::fs::read_to_string(work.join("probe.txt")).unwrap_or_default();
+                    if o.status.success() && !reply.trim().is_empty() {
+                        ProbeResult { ok: true, detail: format!("{version}: replied \"{}\".", reply.trim().chars().take(40).collect::<String>()) }
+                    } else {
+                        let err = String::from_utf8_lossy(&o.stderr);
+                        let last = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no output");
+                        ProbeResult { ok: false, detail: format!("{version} starts, but the test prompt failed: {}", last.chars().take(240).collect::<String>()) }
+                    }
+                }
+                Ok(Err(e)) => ProbeResult { ok: false, detail: format!("Could not run a test prompt: {e}") },
+                Err(_) => ProbeResult { ok: false, detail: "The test prompt timed out after 90 s. Is Codex signed in? Run `codex login` in a terminal.".into() },
+            }
+        }
         BrainKind::Local => {
             let brain = LocalBrain::new(local_config(&s));
             match brain.probe().await {
@@ -215,6 +247,12 @@ async fn begin_task(app: &AppHandle, task: String, scenario: Option<String>) -> 
                 binary: s.claude.binary.clone(),
                 model: Some(claude_model(&s)),
                 cwd: Some(state.data_dir.clone()),
+                ..Default::default()
+            })),
+            BrainKind::Codex => Arc::new(CodexBrain::new(CodexConfig {
+                binary: s.codex.binary.clone(),
+                model: s.codex.model.clone().filter(|m| !m.trim().is_empty()),
+                work_dir: state.data_dir.join("codex"),
                 ..Default::default()
             })),
             BrainKind::Local => Arc::new(LocalBrain::new(local_config(&s))),

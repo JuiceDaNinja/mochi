@@ -4,10 +4,11 @@
 import "./settings.css";
 import { hasTauri } from "./mochi/bridge";
 
-type BrainKind = "claude_code" | "local" | "mock";
+type BrainKind = "claude_code" | "codex" | "local" | "mock";
 type Settings = {
   brain: BrainKind;
   claude: { binary: string; model: string | null };
+  codex: { binary: string; model: string | null };
   local: { host: string; port: number; model: string; api_key: string | null; vision: boolean };
   narration: boolean;
   scale: number;
@@ -20,6 +21,7 @@ type PairRequest = { session: number; device_name: string; code: string };
 const DEFAULTS: Settings = {
   brain: "claude_code",
   claude: { binary: "claude", model: "sonnet" },
+  codex: { binary: "codex", model: null },
   local: { host: "127.0.0.1", port: 11434, model: "llama3.2", api_key: null, vision: false },
   narration: true,
   scale: 0.8,
@@ -102,12 +104,17 @@ async function render() {
         <h2>Brain</h2>
         <div class="choices">
           <label class="choice"><input type="radio" name="brain" value="claude_code"><div><b>Claude Code</b><span>Uses the Claude Code CLI you are signed into. Best results; sees screenshots.</span></div></label>
+          <label class="choice"><input type="radio" name="brain" value="codex"><div><b>Codex CLI</b><span>OpenAI's Codex CLI, signed in with your ChatGPT account or an OpenAI key.</span></div></label>
           <label class="choice"><input type="radio" name="brain" value="local"><div><b>Local AI</b><span>Any OpenAI-compatible server on your network (Ollama, LM Studio, llama.cpp).</span></div></label>
           <label class="choice"><input type="radio" name="brain" value="mock"><div><b>Demo</b><span>Scripted Gmail reply on a pretend screen. Nothing on your PC is touched.</span></div></label>
         </div>
         <div id="brain-claude" class="sub">
           <label>Command <input id="claude-binary" type="text"></label>
           <label>Model <input id="claude-model" type="text" placeholder="sonnet (default) · haiku · opus if your plan has it"></label>
+        </div>
+        <div id="brain-codex" class="sub">
+          <label>Command <input id="codex-binary" type="text"></label>
+          <label>Model <input id="codex-model" type="text" placeholder="default (leave empty), e.g. gpt-5-codex"></label>
         </div>
         <div id="brain-local" class="sub">
           <div class="row"><label>Host <input id="local-host" type="text"></label><label class="short">Port <input id="local-port" type="number" min="1" max="65535"></label></div>
@@ -154,6 +161,8 @@ async function render() {
   if (radio) radio.checked = true;
   $<HTMLInputElement>("#claude-binary").value = settings.claude.binary;
   $<HTMLInputElement>("#claude-model").value = settings.claude.model ?? "";
+  $<HTMLInputElement>("#codex-binary").value = settings.codex?.binary ?? "codex";
+  $<HTMLInputElement>("#codex-model").value = settings.codex?.model ?? "";
   $<HTMLInputElement>("#local-host").value = settings.local.host;
   $<HTMLInputElement>("#local-port").value = String(settings.local.port);
   $<HTMLInputElement>("#local-model").value = settings.local.model;
@@ -166,6 +175,7 @@ async function render() {
   const showSub = () => {
     const b = (root.querySelector<HTMLInputElement>("input[name=brain]:checked")?.value ?? "claude_code") as BrainKind;
     $("#brain-claude").hidden = b !== "claude_code";
+    $("#brain-codex").hidden = b !== "codex";
     $("#brain-local").hidden = b !== "local";
   };
   showSub();
@@ -175,6 +185,7 @@ async function render() {
   const collect = (): Settings => ({
     brain: (root.querySelector<HTMLInputElement>("input[name=brain]:checked")?.value ?? "claude_code") as BrainKind,
     claude: { binary: $<HTMLInputElement>("#claude-binary").value.trim() || "claude", model: $<HTMLInputElement>("#claude-model").value.trim() || null },
+    codex: { binary: $<HTMLInputElement>("#codex-binary").value.trim() || "codex", model: $<HTMLInputElement>("#codex-model").value.trim() || null },
     local: {
       host: $<HTMLInputElement>("#local-host").value.trim() || "127.0.0.1",
       port: Number($<HTMLInputElement>("#local-port").value) || 11434,

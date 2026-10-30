@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 #[serde(rename_all = "snake_case")]
 pub enum BrainKind {
     ClaudeCode,
+    Codex,
     Local,
     /// Scripted Gmail demo on a fake screen (phase 1 behaviour).
     Mock,
@@ -16,6 +17,16 @@ pub enum BrainKind {
 pub struct ClaudeSettings {
     pub binary: String,
     pub model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexSettings {
+    pub binary: String,
+    pub model: Option<String>,
+}
+
+fn default_codex() -> CodexSettings {
+    CodexSettings { binary: "codex".into(), model: None }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +42,9 @@ pub struct LocalSettings {
 pub struct Settings {
     pub brain: BrainKind,
     pub claude: ClaudeSettings,
+    /// Older settings files predate this field.
+    #[serde(default = "default_codex")]
+    pub codex: CodexSettings,
     pub local: LocalSettings,
     pub narration: bool,
     /// Character size multiplier (0.6–1.2).
@@ -42,6 +56,7 @@ impl Default for Settings {
         Self {
             brain: BrainKind::ClaudeCode,
             claude: ClaudeSettings { binary: "claude".into(), model: Some("sonnet".into()) },
+            codex: default_codex(),
             local: LocalSettings { host: "127.0.0.1".into(), port: 11434, model: "llama3.2".into(), api_key: None, vision: false },
             narration: true,
             scale: 0.8,
