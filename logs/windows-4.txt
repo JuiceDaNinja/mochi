@@ -1,0 +1,173 @@
+5:        Info Looking up installed tauri packages to check mismatched versions...
+675:    [1m[96m|[0m                                                                          [1m[91mexpected 1 generic argument[0m
+689:    [1m[96m|[0m                                                                                    [1m[91mexpected 1 generic argument[0m
+703:    [1m[96m|[0m                                                     [1m[91mexpected 1 generic argument[0m
+717:    [1m[96m|[0m                                                                                [1m[91mexpected 1 generic argument[0m
+731:    [1m[96m|[0m                                                                                 [1m[91mexpected 1 generic argument[0m
+745:    [1m[96m|[0m                                                           [1m[91mexpected 1 generic argument[0m
+759:    [1m[96m|[0m                                                                        [1m[91mexpected 1 generic argument[0m
+773:    [1m[96m|[0m                                                [1m[91mexpected 1 generic argument[0m
+787:    [1m[96m|[0m                                                          [1m[91mexpected 1 generic argument[0m
+801:    [1m[96m|[0m                                               [1m[91mexpected 1 generic argument[0m
+813:    [1m[96m|[0m                                                               [1m[91m^^^^^^[0m [1m[91mexpected 1 generic argument[0m   [1m[96m--------[0m [1m[96mhelp: remove the unnecessary generic argument[0m
+827:    [1m[96m|[0m                                                                                            [1m[91mexpected 1 generic argument[0m
+841:    [1m[96m|[0m                                     [1m[91mexpected 1 generic argument[0m
+856:      but trait `From<[1m[35mrusqlite::error::Error[0m>` [1m[35mis[0m implemented for it
+861:    [1m[96m= [0m[1m[97mhelp[0m: for that trait implementation, expected `[1m[35mrusqlite::error::Error[0m`, found `[1m[35m&str[0m`
+875:      but trait `From<[1m[35mrusqlite::error::Error[0m>` [1m[35mis[0m implemented for it
+880:    [1m[96m= [0m[1m[97mhelp[0m: for that trait implementation, expected `[1m[35mrusqlite::error::Error[0m`, found `[1m[35mstd::string::String[0m`
+893:      but trait `From<[1m[35mrusqlite::error::Error[0m>` [1m[35mis[0m implemented for it
+898:    [1m[96m= [0m[1m[97mhelp[0m: for that trait implementation, expected `[1m[35mrusqlite::error::Error[0m`, found `[1m[35mstd::string::String[0m`
+904:    [1m[96m|[0m                                                                          [1m[96m--------------------------[0m [1m[96mexpected `MochiError` because of this[0m
+913:      but trait `From<[1m[35mrusqlite::error::Error[0m>` [1m[35mis[0m implemented for it
+918:    [1m[96m= [0m[1m[97mhelp[0m: for that trait implementation, expected `[1m[35mrusqlite::error::Error[0m`, found `[1m[35mstd::string::String[0m`
+927:      but trait `From<[1m[35mrusqlite::error::Error[0m>` [1m[35mis[0m implemented for it
+932:    [1m[96m= [0m[1m[97mhelp[0m: for that trait implementation, expected `[1m[35mrusqlite::error::Error[0m`, found `[1m[35m&str[0m`
+939:    [1m[96m|[0m                                                                                    [1m[96m------------------[0m [1m[96mexpected `MochiError` because of this[0m
+948:      but trait `From<[1m[35mrusqlite::error::Error[0m>` [1m[35mis[0m implemented for it
+953:    [1m[96m= [0m[1m[97mhelp[0m: for that trait implementation, expected `[1m[35mrusqlite::error::Error[0m`, found `[1m[35mstd::string::String[0m`
+955:[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+959:    [1m[96m|[0m                                                [1m[96m----------------------------------[0m [1m[96mexpected `std::result::Result<Vec<mochi_core::LearnedTarget>, MochiError>` because of return type[0m
+961:    [1m[96m|[0m     [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `Result<Vec<LearnedTarget>, MochiError>`, found `Result<Vec<LearnedTarget>, String>`[0m
+963:    [1m[96m= [0m[1m[97mnote[0m: expected enum `Result<_, [1m[35mMochiError[0m>`
+966:[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+970:    [1m[96m|[0m                                                          [1m[96m------------------[0m [1m[96mexpected `std::result::Result<(), MochiError>` because of return type[0m
+972:    [1m[96m|[0m     [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `Result<(), MochiError>`, found `Result<(), String>`[0m
+974:    [1m[96m= [0m[1m[97mnote[0m: expected enum `Result<_, [1m[35mMochiError[0m>`
+977:[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+981:    [1m[96m|[0m                                               [1m[96m------------------[0m [1m[96mexpected `std::result::Result<(), MochiError>` because of return type[0m
+983:    [1m[96m|[0m     [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `Result<(), MochiError>`, found `Result<(), String>`[0m
+985:    [1m[96m= [0m[1m[97mnote[0m: expected enum `Result<_, [1m[35mMochiError[0m>`
+988:[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+992:    [1m[96m|[0m                                                               [1m[96m----------------------------------------------[0m [1m[96mexpected `std::result::Result<AppSetting, MochiError>` because of return type[0m
+994:    [1m[96m|[0m     [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `Result<AppSetting, MochiError>`, found `Result<AppSetting, String>`[0m
+996:    [1m[96m= [0m[1m[97mnote[0m: expected enum `Result<_, [1m[35mMochiError[0m>`
+999:[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+1003:    [1m[96m|[0m                                                                                            [1m[96m------------------[0m [1m[96mexpected `std::result::Result<(), MochiError>` because of return type[0m
+1005:    [1m[96m|[0m     [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `Result<(), MochiError>`, found `Result<(), String>`[0m
+1007:    [1m[96m= [0m[1m[97mnote[0m: expected enum `Result<_, [1m[35mMochiError[0m>`
+1014:    [1m[96m|[0m                                     [1m[96m------------------[0m [1m[96mexpected `MochiError` because of this[0m
+1025:      but trait `From<[1m[35mrusqlite::error::Error[0m>` [1m[35mis[0m implemented for it
+1030:    [1m[96m= [0m[1m[97mhelp[0m: for that trait implementation, expected `[1m[35mrusqlite::error::Error[0m`, found `[1m[35mstd::string::String[0m`
+
+----- tail -----
+[1m[91merror[E0599][0m[1m[97m: the method `blocking_kind` exists for reference `&std::result::Result<(), MochiError>`, but its trait bounds were not satisfied[0m
+   [1m[96m--> [0mapps\desktop\src-tauri\src\lib.rs:386:1
+    [1m[96m|[0m
+[1m[96m386[0m [1m[96m|[0m   #[tauri::command]
+    [1m[96m|[0m   [1m[91m^^^^^^^^^^^^^^^^^[0m [1m[91mmethod cannot be called on `&std::result::Result<(), MochiError>` due to unsatisfied trait bounds[0m
+[1m[96m...[0m
+[1m[96m488[0m [1m[96m|[0m           .invoke_handler(tauri::generate_handler![
+    [1m[96m|[0m [1m[96m _________________________-[0m
+[1m[96m489[0m [1m[96m|[0m [1m[96m|[0m             primary_monitor,
+[1m[96m490[0m [1m[96m|[0m [1m[96m|[0m             get_settings,
+[1m[96m491[0m [1m[96m|[0m [1m[96m|[0m             set_settings,
+[1m[96m...[0m   [1m[96m|[0m
+[1m[96m506[0m [1m[96m|[0m [1m[96m|[0m             forget_device
+[1m[96m507[0m [1m[96m|[0m [1m[96m|[0m         ])
+    [1m[96m|[0m [1m[96m|_________-[0m [1m[96min this macro invocation[0m
+    [1m[96m|[0m
+   [1m[96m::: [0mcrates\mochi-core\src\types.rs:152:1
+    [1m[96m|[0m
+[1m[96m152[0m [1m[96m|[0m   pub enum MochiError {
+    [1m[96m|[0m   [1m[96m-------------------[0m [1m[96mdoesn't satisfy `MochiError: Into<InvokeError>`[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: the following trait bounds were not satisfied:
+            `MochiError: Into<InvokeError>`
+            which is required by `std::result::Result<(), MochiError>: tauri::ipc::private::ResultKind`
+            `std::result::Result<(), MochiError>: IpcResponse`
+            which is required by `&std::result::Result<(), MochiError>: tauri::ipc::private::ResponseKind`
+    [1m[96m= [0m[1m[97mnote[0m: this error originates in the macro `__cmd__wipe_memory` which comes from the expansion of the macro `tauri::generate_handler` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[91merror[E0599][0m[1m[97m: the method `blocking_kind` exists for reference `&std::result::Result<AppSetting, MochiError>`, but its trait bounds were not satisfied[0m
+   [1m[96m--> [0mapps\desktop\src-tauri\src\lib.rs:391:1
+    [1m[96m|[0m
+[1m[96m391[0m [1m[96m|[0m   #[tauri::command]
+    [1m[96m|[0m   [1m[91m^^^^^^^^^^^^^^^^^[0m [1m[91mmethod cannot be called on `&std::result::Result<AppSetting, MochiError>` due to unsatisfied trait bounds[0m
+[1m[96m...[0m
+[1m[96m488[0m [1m[96m|[0m           .invoke_handler(tauri::generate_handler![
+    [1m[96m|[0m [1m[96m _________________________-[0m
+[1m[96m489[0m [1m[96m|[0m [1m[96m|[0m             primary_monitor,
+[1m[96m490[0m [1m[96m|[0m [1m[96m|[0m             get_settings,
+[1m[96m491[0m [1m[96m|[0m [1m[96m|[0m             set_settings,
+[1m[96m...[0m   [1m[96m|[0m
+[1m[96m506[0m [1m[96m|[0m [1m[96m|[0m             forget_device
+[1m[96m507[0m [1m[96m|[0m [1m[96m|[0m         ])
+    [1m[96m|[0m [1m[96m|_________-[0m [1m[96min this macro invocation[0m
+    [1m[96m|[0m
+   [1m[96m::: [0mcrates\mochi-core\src\types.rs:152:1
+    [1m[96m|[0m
+[1m[96m152[0m [1m[96m|[0m   pub enum MochiError {
+    [1m[96m|[0m   [1m[96m-------------------[0m [1m[96mdoesn't satisfy `MochiError: Into<InvokeError>`[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: the following trait bounds were not satisfied:
+            `MochiError: Into<InvokeError>`
+            which is required by `std::result::Result<AppSetting, MochiError>: tauri::ipc::private::ResultKind`
+            `std::result::Result<AppSetting, MochiError>: IpcResponse`
+            which is required by `&std::result::Result<AppSetting, MochiError>: tauri::ipc::private::ResponseKind`
+    [1m[96m= [0m[1m[97mnote[0m: this error originates in the macro `__cmd__app_setting` which comes from the expansion of the macro `tauri::generate_handler` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[91merror[E0599][0m[1m[97m: the method `blocking_kind` exists for reference `&std::result::Result<(), MochiError>`, but its trait bounds were not satisfied[0m
+   [1m[96m--> [0mapps\desktop\src-tauri\src\lib.rs:396:1
+    [1m[96m|[0m
+[1m[96m396[0m [1m[96m|[0m   #[tauri::command]
+    [1m[96m|[0m   [1m[91m^^^^^^^^^^^^^^^^^[0m [1m[91mmethod cannot be called on `&std::result::Result<(), MochiError>` due to unsatisfied trait bounds[0m
+[1m[96m...[0m
+[1m[96m488[0m [1m[96m|[0m           .invoke_handler(tauri::generate_handler![
+    [1m[96m|[0m [1m[96m _________________________-[0m
+[1m[96m489[0m [1m[96m|[0m [1m[96m|[0m             primary_monitor,
+[1m[96m490[0m [1m[96m|[0m [1m[96m|[0m             get_settings,
+[1m[96m491[0m [1m[96m|[0m [1m[96m|[0m             set_settings,
+[1m[96m...[0m   [1m[96m|[0m
+[1m[96m506[0m [1m[96m|[0m [1m[96m|[0m             forget_device
+[1m[96m507[0m [1m[96m|[0m [1m[96m|[0m         ])
+    [1m[96m|[0m [1m[96m|_________-[0m [1m[96min this macro invocation[0m
+    [1m[96m|[0m
+   [1m[96m::: [0mcrates\mochi-core\src\types.rs:152:1
+    [1m[96m|[0m
+[1m[96m152[0m [1m[96m|[0m   pub enum MochiError {
+    [1m[96m|[0m   [1m[96m-------------------[0m [1m[96mdoesn't satisfy `MochiError: Into<InvokeError>`[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: the following trait bounds were not satisfied:
+            `MochiError: Into<InvokeError>`
+            which is required by `std::result::Result<(), MochiError>: tauri::ipc::private::ResultKind`
+            `std::result::Result<(), MochiError>: IpcResponse`
+            which is required by `&std::result::Result<(), MochiError>: tauri::ipc::private::ResponseKind`
+    [1m[96m= [0m[1m[97mnote[0m: this error originates in the macro `__cmd__set_app_setting` which comes from the expansion of the macro `tauri::generate_handler` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[91merror[E0599][0m[1m[97m: the method `blocking_kind` exists for reference `&std::result::Result<(), MochiError>`, but its trait bounds were not satisfied[0m
+   [1m[96m--> [0mapps\desktop\src-tauri\src\lib.rs:403:1
+    [1m[96m|[0m
+[1m[96m403[0m [1m[96m|[0m   #[tauri::command]
+    [1m[96m|[0m   [1m[91m^^^^^^^^^^^^^^^^^[0m [1m[91mmethod cannot be called on `&std::result::Result<(), MochiError>` due to unsatisfied trait bounds[0m
+[1m[96m...[0m
+[1m[96m488[0m [1m[96m|[0m           .invoke_handler(tauri::generate_handler![
+    [1m[96m|[0m [1m[96m _________________________-[0m
+[1m[96m489[0m [1m[96m|[0m [1m[96m|[0m             primary_monitor,
+[1m[96m490[0m [1m[96m|[0m [1m[96m|[0m             get_settings,
+[1m[96m491[0m [1m[96m|[0m [1m[96m|[0m             set_settings,
+[1m[96m...[0m   [1m[96m|[0m
+[1m[96m506[0m [1m[96m|[0m [1m[96m|[0m             forget_device
+[1m[96m507[0m [1m[96m|[0m [1m[96m|[0m         ])
+    [1m[96m|[0m [1m[96m|_________-[0m [1m[96min this macro invocation[0m
+    [1m[96m|[0m
+   [1m[96m::: [0mcrates\mochi-core\src\types.rs:152:1
+    [1m[96m|[0m
+[1m[96m152[0m [1m[96m|[0m   pub enum MochiError {
+    [1m[96m|[0m   [1m[96m-------------------[0m [1m[96mdoesn't satisfy `MochiError: Into<InvokeError>`[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: the following trait bounds were not satisfied:
+            `MochiError: Into<InvokeError>`
+            which is required by `std::result::Result<(), MochiError>: tauri::ipc::private::ResultKind`
+            `std::result::Result<(), MochiError>: IpcResponse`
+            which is required by `&std::result::Result<(), MochiError>: tauri::ipc::private::ResponseKind`
+    [1m[96m= [0m[1m[97mnote[0m: this error originates in the macro `__cmd__open_settings` which comes from the expansion of the macro `tauri::generate_handler` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[97mSome errors have detailed explanations: E0107, E0277, E0308, E0599.[0m
+[1m[97mFor more information about an error, try `rustc --explain E0107`.[0m
+[1m[91merror[0m: could not compile `mochi-desktop` (lib) due to 37 previous errors
+failed to build app: failed to build app
+       Error failed to build app: failed to build app
+D:\a\mochi\mochi\apps\desktop:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @mochi/desktop@0.1.0 tauri: `tauri "build"`
+Exit status 1
