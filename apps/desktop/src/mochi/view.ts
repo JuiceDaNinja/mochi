@@ -75,7 +75,7 @@ export class SvgMochiView implements MochiView {
   private readonly confirmEl: HTMLDivElement;
   private readonly pupils: SVGGElement[];
   private state: CharacterState = "idle";
-  private gestureTimer: number | null = null;
+  private gestureTimers = new Map<string, number>();
   private bubbleTimer: number | null = null;
   private onAnswer: ((yes: boolean) => void) | null = null;
 
@@ -116,10 +116,13 @@ export class SvgMochiView implements MochiView {
     void this.root.offsetWidth;
     this.root.classList.add(cls);
     const sticky = g === "look_up" || g === "type";
-    if (this.gestureTimer) window.clearTimeout(this.gestureTimer);
+    // One cleanup timer per gesture: a hop right after a thumbs-up must not cancel the
+    // thumbs-up's removal (that left the thumb stuck on screen).
+    const prev = this.gestureTimers.get(cls);
+    if (prev) window.clearTimeout(prev);
     if (!sticky) {
       const ms = g === "heart" ? 1300 : g === "thumbs_up" ? 900 : g === "wobble" ? 700 : g === "click" ? 320 : g === "nod" ? 520 : 600;
-      this.gestureTimer = window.setTimeout(() => this.root.classList.remove(cls), ms);
+      this.gestureTimers.set(cls, window.setTimeout(() => { this.root.classList.remove(cls); this.gestureTimers.delete(cls); }, ms));
     }
     if (g !== "look_up") this.root.classList.remove("g-look_up");
     if (g !== "type") this.root.classList.remove("g-type");
