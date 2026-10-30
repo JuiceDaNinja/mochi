@@ -5,6 +5,8 @@ import { Mover, gazeToward } from "./mochi/motion";
 import { loadRiveView } from "./mochi/rive";
 import { MochiView, SvgMochiView } from "./mochi/view";
 import { Sfx, Voice, WebSpeechVoice } from "./mochi/voice";
+import { mountSettings, refreshSettings } from "./settings";
+import "./settings.css";
 
 async function boot() {
   const bridge: Bridge = hasTauri() ? new TauriBridge() : new BrowserBridge();
@@ -45,8 +47,25 @@ async function boot() {
 
   bridge.onEvent((ev) => run(model.apply(ev, performance.now())));
 
+  // Settings live in a floating panel inside this window (a second window proved
+  // unreliable on some machines). The panel is part of the click-through hit rectangle.
+  const panel = document.createElement("div");
+  panel.className = "settings-panel";
+  panel.hidden = true;
+  const panelBody = document.createElement("div");
+  panelBody.className = "settings-body settings-scope";
+  panel.appendChild(panelBody);
+  document.body.appendChild(panel);
+  let settingsMounted = false;
+  const closeSettings = () => { panel.hidden = true; };
+  const openSettings = async () => {
+    panel.hidden = false;
+    if (!settingsMounted) { settingsMounted = true; await mountSettings(panelBody, closeSettings); } else { await refreshSettings(); }
+  };
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape" && !panel.hidden) closeSettings(); });
+
   // Click Mochi while idle: a small menu (demo scenarios, narration, stop).
-  const menu = buildMenu(bridge, voice, model);
+  const menu = buildMenu(bridge, voice, model, openSettings);
   view.root.appendChild(menu.el);
 
   // Timers (success -> home, learning -> working) and body-rect reporting. The shell uses
@@ -58,8 +77,8 @@ async function boot() {
     let box = { x: r.x, y: r.y, w: r.width, h: r.height };
     // Anything clickable that hangs above the body must be inside the hit rectangle too:
     // the menu, the Yes/No buttons, the bubble they sit under.
-    for (const sel of [".menu", ".confirm", ".bubble"]) {
-      const el = view.root.querySelector<HTMLElement>(sel);
+    for (const sel of [".menu", ".confirm", ".bubble", ".settings-panel"]) {
+      const el = sel === ".settings-panel" ? panel : view.root.querySelector<HTMLElement>(sel);
       if (!el || el.hidden) continue;
       const m = el.getBoundingClientRect();
       if (m.width === 0) continue;
@@ -140,7 +159,7 @@ async function boot() {
 }
 
 /** The in-character menu: shown when Mochi is clicked while idle. Works in both shells. */
-function buildMenu(bridge: Bridge, voice: Voice, model: MochiModel) {
+function buildMenu(bridge: Bridge, voice: Voice, model: MochiModel, openSettings: () => void) {
   const el = document.createElement("div");
   el.className = "menu";
   el.hidden = true;
@@ -168,7 +187,7 @@ function buildMenu(bridge: Bridge, voice: Voice, model: MochiModel) {
   el.querySelectorAll<HTMLButtonElement>("button[data-s]").forEach((b) =>
     b.addEventListener("click", () => { close(); void bridge.startTask("demo", b.dataset.s!); }),
   );
-  el.querySelector<HTMLButtonElement>('button[data-x="settings"]')!.addEventListener("click", () => { close(); void bridge.openSettings(); });
+  el.querySelector<HTMLButtonElement>('button[data-x="settings"]')!.addEventListener("click", () => { close(); openSettings(); });
   el.querySelector<HTMLButtonElement>('button[data-x="stop"]')!.addEventListener("click", () => { close(); void bridge.cancel(); });
   el.querySelector<HTMLInputElement>("#menu-narr")!.addEventListener("change", (e) => {
     const on = (e.target as HTMLInputElement).checked;

@@ -26,15 +26,13 @@ const DEFAULTS: Settings = {
 };
 
 // Anything that goes wrong shows on the page (release builds have no devtools).
-const root = document.getElementById("app")!;
+let root: HTMLElement = document.getElementById("app") ?? document.createElement("div");
 function showError(where: string, e: unknown) {
   const pre = document.createElement("pre");
   pre.className = "error";
   pre.textContent = `${where}: ${e instanceof Error ? e.message : String(e)}`;
   root.prepend(pre);
 }
-window.addEventListener("error", (e) => showError("error", e.message));
-window.addEventListener("unhandledrejection", (e) => showError("rejection", (e as PromiseRejectionEvent).reason));
 
 // ---- backend (Tauri or browser stub) ----
 async function makeApi() {
@@ -54,7 +52,7 @@ async function makeApi() {
         forgetDevice: (device_id: string) => invoke<void>("forget_device", { deviceId: device_id }),
         onPair: async (cb: (r: PairRequest) => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen<PairRequest>("mochi://pair-request", (e) => cb(e.payload)); },
         onLink: async (cb: () => void) => { const { listen } = await import("@tauri-apps/api/event"); await listen("mochi://link", () => cb()); },
-        close: async () => { const { getCurrentWindow } = await import("@tauri-apps/api/window"); await getCurrentWindow().close(); },
+        close: async () => { onClose?.(); },
         log: (line: string) => invoke<void>("log_js", { line }).catch(() => {}),
       };
 }
@@ -73,13 +71,14 @@ function browserApi() {
       forgetDevice: async () => {},
       onPair: async (cb: (r: PairRequest) => void) => { (window as any).fakePairRequest = () => cb({ session: 1, device_name: "Pixel 9", code: "482913" }); },
       onLink: async () => {},
-      close: async () => window.close(),
+      close: async () => { onClose?.(); },
       log: async (line: string) => console.log(line),
     };
 }
 type Api = Awaited<ReturnType<typeof makeApi>>;
 let api: Api;
 let settings: Settings = { ...DEFAULTS };
+let onClose: (() => void) | null = null;
 
 function h(html: string): HTMLElement {
   const t = document.createElement("template");
@@ -260,14 +259,37 @@ function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 
-(async () => {
+/**
+ * Mount the settings UI into `container`. Used as a floating panel inside Mochi's own
+ * window (main.ts) and, for development, as a standalone page (settings.html).
+ */
+export async function mountSettings(container: HTMLElement, close?: () => void) {
+  root = container;
+  onClose = close ?? null;
   try {
     api = await makeApi();
-    await api.log("settings window: script started");
+    await api.log("settings: mounting");
     settings = await api.get();
     await render();
-    await api.log("settings window: rendered");
+    await api.log("settings: rendered");
   } catch (e) {
     showError("settings failed to start", e);
   }
-})();
+}
+
+/** Re-read state when the panel is reopened (link status, memory). */
+export async function refreshSettings() {
+  if (!api) return;
+  try {
+    settings = await api.get();
+    await render();
+  } catch (e) {
+    showError("settings refresh", e);
+  }
+}
+
+if (document.getElementById("app")) {
+  window.addEventListener("error", (e) => showError("error", e.message));
+  window.addEventListener("unhandledrejection", (e) => showError("rejection", (e as PromiseRejectionEvent).reason));
+  void mountSettings(document.getElementById("app")!, () => window.close());
+}
