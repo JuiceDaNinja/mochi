@@ -8,6 +8,7 @@ mod settings;
 mod tts;
 
 use mochi_brain_claude::{ClaudeBrain, ClaudeConfig};
+use mochi_brain_antigravity::{AntigravityBrain, AntigravityConfig};
 use mochi_brain_codex::{CodexBrain, CodexConfig};
 use mochi_brain_local::{LocalBrain, LocalConfig};
 use mochi_brain_mock::{FakeDesktop, MockBrain};
@@ -205,6 +206,37 @@ async fn probe_brain(state: State<'_, AppState>) -> Result<ProbeResult, String> 
                 Err(_) => ProbeResult { ok: false, detail: "The test prompt timed out after 90 s. Is Codex signed in? Run `codex login` in a terminal.".into() },
             }
         }
+        BrainKind::Antigravity => {
+            let (prog, lead) = mochi_core::launch::resolve_program(&s.antigravity.binary);
+            let version = match tokio::process::Command::new(&prog).args(&lead).arg("--version").stdin(std::process::Stdio::null()).output().await {
+                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+                Ok(o) => return Ok(ProbeResult { ok: false, detail: format!("`{} --version` failed: {}", s.antigravity.binary, String::from_utf8_lossy(&o.stderr).trim()) }),
+                Err(e) => return Ok(ProbeResult { ok: false, detail: format!("Cannot start `{}`: {e}. Install the Antigravity CLI (winget install Google.AntigravityCLI) and run `agy` once to sign in.", s.antigravity.binary) }),
+            };
+            let work = state.data_dir.join("antigravity");
+            let _ = std::fs::create_dir_all(&work);
+            let mut cmd = tokio::process::Command::new(&prog);
+            cmd.args(&lead).current_dir(&work);
+            if let Some(m) = s.antigravity.model.clone().filter(|m| !m.trim().is_empty()) { cmd.args(["--model", &m]); }
+            // stdin closed: agy blocks on an open stdin pipe (antigravity-cli #76). --print stays last.
+            cmd.args(["--print-timeout", "80s", "--output-format", "json", "--print", "Reply with exactly: OK"]).stdin(std::process::Stdio::null());
+            #[cfg(windows)]
+            cmd.creation_flags(0x0800_0000);
+            match tokio::time::timeout(Duration::from_secs(90), cmd.output()).await {
+                Ok(Ok(o)) => {
+                    let reply = mochi_brain_antigravity::parse_json_reply(&String::from_utf8_lossy(&o.stdout));
+                    if o.status.success() && !reply.response.trim().is_empty() {
+                        ProbeResult { ok: true, detail: format!("Antigravity CLI {version}: replied \"{}\".", reply.response.trim().chars().take(40).collect::<String>()) }
+                    } else {
+                        let err = String::from_utf8_lossy(&o.stderr);
+                        let last = reply.error.unwrap_or_else(|| err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no output").to_string());
+                        ProbeResult { ok: false, detail: format!("Antigravity CLI {version} starts, but the test prompt failed ({}): {}", reply.status.unwrap_or_else(|| o.status.to_string()), last.chars().take(240).collect::<String>()) }
+                    }
+                }
+                Ok(Err(e)) => ProbeResult { ok: false, detail: format!("Could not run a test prompt: {e}") },
+                Err(_) => ProbeResult { ok: false, detail: "The test prompt timed out after 90 s. Is Antigravity signed in? Run `agy` once in a terminal.".into() },
+            }
+        }
         BrainKind::Local => {
             let brain = LocalBrain::new(local_config(&s));
             match brain.probe().await {
@@ -265,6 +297,12 @@ async fn begin_task(app: &AppHandle, task: String, scenario: Option<String>) -> 
                 binary: s.codex.binary.clone(),
                 model: s.codex.model.clone().filter(|m| !m.trim().is_empty()),
                 work_dir: state.data_dir.join("codex"),
+                ..Default::default()
+            })),
+            BrainKind::Antigravity => Arc::new(AntigravityBrain::new(AntigravityConfig {
+                binary: s.antigravity.binary.clone(),
+                model: s.antigravity.model.clone().filter(|m| !m.trim().is_empty()),
+                work_dir: state.data_dir.join("antigravity"),
                 ..Default::default()
             })),
             BrainKind::Local => Arc::new(LocalBrain::new(local_config(&s))),

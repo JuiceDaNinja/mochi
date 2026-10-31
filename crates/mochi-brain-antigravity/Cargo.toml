@@ -1,0 +1,16 @@
+[package]
+name = "mochi-brain-antigravity"
+description = "Brain adapter: Google Antigravity CLI (agy) in headless mode (agy -p --output-format json)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mochi-core = { path = "../mochi-core" }
+async-trait.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

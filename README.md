@@ -13,6 +13,7 @@ mochi/
 │  ├─ mochi-brain-claude/      Claude Code CLI adapter (claude -p, stream-json in/out, resumed session per task).
 │  ├─ mochi-brain-local/       OpenAI-compatible adapter for a model on your LAN (Ollama, LM Studio, llama.cpp, vLLM).
 │  ├─ mochi-brain-codex/       OpenAI Codex CLI adapter (codex exec --json, AGENTS.md instructions, resumed thread per task).
+│  ├─ mochi-brain-antigravity/ Google Antigravity CLI adapter (agy -p --output-format json, AGENTS.md instructions, --conversation per task).
 │  ├─ mochi-brain-mock/        Scripted scenarios + fake desktop for demos and tests.
 │  ├─ mochi-platform-windows/  UI Automation tree + GDI screenshot (Perception), SendInput (Actuator). Stubs elsewhere.
 │  ├─ mochi-secrets/           Secret store: Windows Credential Manager / macOS Keychain (keyring), file fallback, in-memory for tests.
@@ -50,6 +51,7 @@ When Mochi cries that it can't find something, click the thing you meant and it 
 
 - **Claude Code** — needs the CLI installed and signed in once: `npm i -g @anthropic-ai/claude-code`, then run `claude` in any terminal to log in. Mochi runs it headless with no tools and a 1-turn limit; screenshots are attached when a window exposes too few controls.
 - **Codex CLI** — `npm i -g @openai/codex`, then `codex login` once (ChatGPT account or OpenAI key). Mochi runs `codex exec` with a read-only sandbox in its own folder.
+- **Antigravity CLI** — `winget install Google.AntigravityCLI`, then run `agy` once to sign in with your Google account. Mochi runs `agy -p … --output-format json` in its own folder (Gemini models; pick one with `agy models`). Headless mode has no image input, so this brain works from the accessibility tree only.
 - **Local AI** — host, port, model name; "Test connection" lists the server's models. Tick "can see images" only for a multimodal model.
 - **Demo** — the scripted scenario.
 
@@ -112,7 +114,7 @@ pnpm test               # vitest (state machine) + cargo test (gate, memory, eng
 - [x] Mochi's own voice — decided against any hosted TTS (privacy): `tts/mochi_tts.py` runs Kokoro on the CPU as a sidecar the app starts, serving `POST /tts` on localhost; nothing leaves the PC. Model files (~350 MB) download once from the kokoro-onnx GitHub release with pinned SHA-256; the Windows voice fills in until then. Built with PyInstaller on CI (`tts/build.ps1`).
 - [ ] Rive assets for both faces; Porcupine wake word.
 - [ ] Per-app allow list UI (the memory already has `app_setting.allowed`), global hotkey for the emergency stop.
-- [ ] macOS + iOS, Codex CLI adapter, pixel-fallback perception for apps with no accessibility tree.
+- [ ] macOS + iOS, pixel-fallback perception for apps with no accessibility tree.
 
 ## Notes
 
