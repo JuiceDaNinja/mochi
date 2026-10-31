@@ -2227,7 +2227,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-brain-antigravity"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "async-trait",
  "mochi-core",
@@ -2238,7 +2238,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-brain-claude"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "async-trait",
  "mochi-core",
@@ -2250,7 +2250,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-brain-codex"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2262,7 +2262,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-brain-local"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "async-trait",
  "mochi-core",
@@ -2274,7 +2274,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-brain-mock"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "async-trait",
  "mochi-core",
@@ -2285,7 +2285,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-core"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "async-trait",
  "regex",
@@ -2299,7 +2299,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-desktop"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "hostname",
  "mochi-brain-antigravity",
@@ -2320,7 +2320,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-link"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -2345,7 +2345,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-platform-windows"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2357,7 +2357,7 @@ dependencies = [
 
 [[package]]
 name = "mochi-secrets"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "keyring",
  "serde_json",
