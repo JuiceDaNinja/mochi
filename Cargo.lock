@@ -2226,6 +2226,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mochi-brain-antigravity"
+version = "0.1.16"
+dependencies = [
+ "async-trait",
+ "mochi-core",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "mochi-brain-claude"
 version = "0.1.16"
 dependencies = [
@@ -2291,6 +2302,7 @@ name = "mochi-desktop"
 version = "0.1.16"
 dependencies = [
  "hostname",
+ "mochi-brain-antigravity",
  "mochi-brain-claude",
  "mochi-brain-codex",
  "mochi-brain-local",

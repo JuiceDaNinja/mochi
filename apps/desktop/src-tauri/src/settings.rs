@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 pub enum BrainKind {
     ClaudeCode,
     Codex,
+    Antigravity,
     Local,
     /// Scripted Gmail demo on a fake screen (phase 1 behaviour).
     Mock,
@@ -35,6 +36,18 @@ fn default_codex() -> CodexSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AntigravitySettings {
+    /// `agy` on PATH (winget install Google.AntigravityCLI).
+    pub binary: String,
+    /// Model slug from `agy models`, or None for the default.
+    pub model: Option<String>,
+}
+
+fn default_antigravity() -> AntigravitySettings {
+    AntigravitySettings { binary: "agy".into(), model: None }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalSettings {
     pub host: String,
     pub port: u16,
@@ -50,6 +63,9 @@ pub struct Settings {
     /// Older settings files predate this field.
     #[serde(default = "default_codex")]
     pub codex: CodexSettings,
+    /// Older settings files predate this field.
+    #[serde(default = "default_antigravity")]
+    pub antigravity: AntigravitySettings,
     pub local: LocalSettings,
     pub narration: bool,
     /// Character size multiplier (0.6–1.2).
@@ -62,6 +78,7 @@ impl Default for Settings {
             brain: BrainKind::ClaudeCode,
             claude: ClaudeSettings { binary: "claude".into(), model: Some("sonnet".into()) },
             codex: default_codex(),
+            antigravity: default_antigravity(),
             local: LocalSettings { host: "127.0.0.1".into(), port: 11434, model: "llama3.2".into(), api_key: None, vision: false },
             narration: true,
             scale: 0.8,

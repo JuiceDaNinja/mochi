@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 mochi-core = { path = "../../../crates/mochi-core" }
 mochi-brain-mock = { path = "../../../crates/mochi-brain-mock" }
 mochi-brain-claude = { path = "../../../crates/mochi-brain-claude" }
+mochi-brain-antigravity = { path = "../../../crates/mochi-brain-antigravity" }
 mochi-brain-local = { path = "../../../crates/mochi-brain-local" }
 mochi-brain-codex = { path = "../../../crates/mochi-brain-codex" }
 mochi-platform-windows = { path = "../../../crates/mochi-platform-windows" }

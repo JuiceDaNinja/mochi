@@ -4,11 +4,12 @@
 import "./settings.css";
 import { hasTauri } from "./mochi/bridge";
 
-type BrainKind = "claude_code" | "codex" | "local" | "mock";
+type BrainKind = "claude_code" | "codex" | "antigravity" | "local" | "mock";
 type Settings = {
   brain: BrainKind;
   claude: { binary: string; model: string | null };
   codex: { binary: string; model: string | null };
+  antigravity: { binary: string; model: string | null };
   local: { host: string; port: number; model: string; api_key: string | null; vision: boolean };
   narration: boolean;
   scale: number;
@@ -23,6 +24,7 @@ const DEFAULTS: Settings = {
   brain: "claude_code",
   claude: { binary: "claude", model: "sonnet" },
   codex: { binary: "codex", model: null },
+  antigravity: { binary: "agy", model: null },
   local: { host: "127.0.0.1", port: 11434, model: "llama3.2", api_key: null, vision: false },
   narration: true,
   scale: 0.8,
@@ -113,6 +115,7 @@ async function render() {
         <div class="choices">
           <label class="choice"><input type="radio" name="brain" value="claude_code"><div><b>Claude Code</b><span>Uses the Claude Code CLI you are signed into. Best results; sees screenshots.</span></div></label>
           <label class="choice"><input type="radio" name="brain" value="codex"><div><b>Codex CLI</b><span>OpenAI's Codex CLI, signed in with your ChatGPT account or an OpenAI key.</span></div></label>
+          <label class="choice"><input type="radio" name="brain" value="antigravity"><div><b>Antigravity CLI</b><span>Google's Antigravity CLI (<code>agy</code>), signed in with your Google account. Gemini models; no screenshots.</span></div></label>
           <label class="choice"><input type="radio" name="brain" value="local"><div><b>Local AI</b><span>Any OpenAI-compatible server on your network (Ollama, LM Studio, llama.cpp).</span></div></label>
         </div>
         <div id="brain-claude" class="sub">
@@ -122,6 +125,10 @@ async function render() {
         <div id="brain-codex" class="sub">
           <label>Command <input id="codex-binary" type="text"></label>
           <label>Model <input id="codex-model" type="text" placeholder="default (leave empty), e.g. gpt-5-codex"></label>
+        </div>
+        <div id="brain-antigravity" class="sub">
+          <label>Command <input id="antigravity-binary" type="text"></label>
+          <label>Model <input id="antigravity-model" type="text" placeholder="default (leave empty); run agy models to list"></label>
         </div>
         <div id="brain-local" class="sub">
           <div class="row"><label>Host <input id="local-host" type="text"></label><label class="short">Port <input id="local-port" type="number" min="1" max="65535"></label></div>
@@ -175,6 +182,8 @@ async function render() {
   $<HTMLInputElement>("#claude-model").value = settings.claude.model ?? "";
   $<HTMLInputElement>("#codex-binary").value = settings.codex?.binary ?? "codex";
   $<HTMLInputElement>("#codex-model").value = settings.codex?.model ?? "";
+  $<HTMLInputElement>("#antigravity-binary").value = settings.antigravity?.binary ?? "agy";
+  $<HTMLInputElement>("#antigravity-model").value = settings.antigravity?.model ?? "";
   $<HTMLInputElement>("#local-host").value = settings.local.host;
   $<HTMLInputElement>("#local-port").value = String(settings.local.port);
   $<HTMLInputElement>("#local-model").value = settings.local.model;
@@ -188,6 +197,7 @@ async function render() {
     const b = (root.querySelector<HTMLInputElement>("input[name=brain]:checked")?.value ?? "claude_code") as BrainKind;
     $("#brain-claude").hidden = b !== "claude_code";
     $("#brain-codex").hidden = b !== "codex";
+    $("#brain-antigravity").hidden = b !== "antigravity";
     $("#brain-local").hidden = b !== "local";
   };
   showSub();
@@ -198,6 +208,7 @@ async function render() {
     brain: (root.querySelector<HTMLInputElement>("input[name=brain]:checked")?.value ?? "claude_code") as BrainKind,
     claude: { binary: $<HTMLInputElement>("#claude-binary").value.trim() || "claude", model: $<HTMLInputElement>("#claude-model").value.trim() || null },
     codex: { binary: $<HTMLInputElement>("#codex-binary").value.trim() || "codex", model: $<HTMLInputElement>("#codex-model").value.trim() || null },
+    antigravity: { binary: $<HTMLInputElement>("#antigravity-binary").value.trim() || "agy", model: $<HTMLInputElement>("#antigravity-model").value.trim() || null },
     local: {
       host: $<HTMLInputElement>("#local-host").value.trim() || "127.0.0.1",
       port: Number($<HTMLInputElement>("#local-port").value) || 11434,
